@@ -29,3 +29,8 @@ zeromq message definitions (for which we will let zeromq handle framing):
     * SENDER: space-separated string of zeromq endpoint URIs
     * TOPIC: string
     * MESSAGE: opaque bytes
+
+Ports and addresses:
+
+  * Default port for SUB and ADV messages: 11312
+  * By convention, SUB and ADV messages are sent to a broadcast address.
