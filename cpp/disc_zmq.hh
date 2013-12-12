@@ -8,9 +8,12 @@
 #include <map>
 #include <string>
 
+#include "sockets/socket.hh"
 #include "transport_defs.hh"
 #include "zmq/zmq.hpp"
 #include "zmq/zmsg.hpp"
+
+const int MAXRCVSTRING = 65536; // Longest string to receive
 
 class Node
 {
@@ -35,6 +38,8 @@ class Node
       this->publisher = 0;
       this->subscriber = 0;
 
+      this->broadcastSocket = new UDPSocket(11312);
+
       s_catch_signals();
       connect_to_master();
 
@@ -58,24 +63,26 @@ class Node
     /// \brief Thread in charge of receiving the discovery updates.
     void RecvDiscoveryUpdates()
     {
-      try
+      while (true)
       {
-        while (true)
-        {
-          s_sleep(1000);
+        try {
+          char recvString[MAXRCVSTRING + 1]; // Buffer for echo string + \0
+          std::string sourceAddress;         // Address of datagram source
+          unsigned short sourcePort;         // Port of datagram source
+          int bytesRcvd = this->broadcastSocket->recvFrom(recvString,
+            MAXRCVSTRING, sourceAddress, sourcePort);
+          recvString[bytesRcvd] = '\0';  // Terminate string
+
+          if (this->verbose)
+          {
+            cout << "Received " << recvString << " from " << sourceAddress <<
+                    ": " << sourcePort << endl;
+          }
+
+        } catch (SocketException &e) {
+          cerr << e.what() << endl;
         }
       }
-      catch (boost::thread_interrupted& interruption)
-      {
-        // thread was interrupted, this is expected.
-        std::cout << "Thread interrupted" << std::endl;
-      }
-      catch (std::exception& e)
-      {
-        // an unhandled exception reached this point, this constitutes an error
-
-      }
-
     }
 
     //  ---------------------------------------------------------------------
@@ -151,6 +158,9 @@ class Node
 
     // Thread in charge of the discovery
     boost::thread discoveryThread;
+
+    // UDP broadcast thread
+    UDPSocket *broadcastSocket;
 };
 
 #endif
