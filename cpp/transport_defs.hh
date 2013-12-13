@@ -10,18 +10,12 @@
 //  This is the version of Gazebo transport we implement
 #define TRNSP_VERSION       "0.1.0"
 
-// Gazebo reserved services
-#define SRV_HELLO						"#hello"
-#define SRV_REGISTER				"#register"
+// Message types
+#define ADVERTISE						1
+#define SUBSCRIBE						2
 
-//  Gazebo transport return values, as strings
-#define OK              "\001"
-#define WRONG_VERSION   "\002"
-#define DUPLICATED_SRV  "\003"
-
-
-static char *transport_rc [] = {
-    NULL, (char*)"OK", (char*)"WRONG_VERSION", (char*)"DUPLICATED_SERVICE"
+static char *msgTypesStr [] = {
+    NULL, (char*)"ADVERTISE", (char*)"SUBSCRIBE"
 };
 
 #endif
