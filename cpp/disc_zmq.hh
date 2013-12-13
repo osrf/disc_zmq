@@ -50,8 +50,8 @@ class Node
       if (this->verbose)
         std::cout << "Current host address: " << this->hostAddress << std::endl;
 
-      s_catch_signals();
-      connect_to_master();
+      //s_catch_signals();
+      //connect_to_master();
 
       // Create the discovery thread
       this->discoveryThread = boost::thread(&Node::RecvDiscoveryUpdates, this);
@@ -271,6 +271,16 @@ class Node
             std::cout << "\tAddresses: " << addresses << std::endl;
           }
 
+          // Update the hash of topics/addresses
+          /*{
+            boost::mutex::scoped_lock lock(this->mutexTopics);
+            if (this->topicsInfo.find(topic) == this->topicsInfo.end())
+            {
+              std::string topicAddresses(addresses);
+              this->topicsInfo[topic] = topicAddresses;
+            }
+          }*/
+
           break;
 
         case SUBSCRIBE:
@@ -382,7 +392,7 @@ class Node
 
     //  ---------------------------------------------------------------------
     /// \brief Send an ADVERTISE message to the discovery socket.
-    int SendSubscriptionMsg(const std::string &_topic)
+    int SendSubscribeMsg(const std::string &_topic)
     {
       // Header fields
       uint8_t opCode;
@@ -434,6 +444,7 @@ class Node
       assert(_topic != "");
 
       this->topicsAdvertised.push_back(_topic);
+      this->SendAdvertiseMsg(_topic);
       return 0;
     }
 
@@ -458,7 +469,7 @@ class Node
       assert(_topic != "");
 
       // Discover the list of nodes that advertise _topic
-
+      this->SendSubscribeMsg(_topic);
       return 0;
     }
 
@@ -494,6 +505,12 @@ class Node
     typedef std::map<std::string, Callback> Callback_M;
     Callback_M callbacksSub;
     boost::mutex mutexSub;
+
+    // Hash with the topic/addresses information
+    typedef std::vector<std::string> Topics_L;
+    typedef std::map<std::string, Topics_L> Topics_M;
+    Topics_M topicsInfo;
+    boost::mutex mutexTopics;
 
     // List of advertised topics
     std::vector<std::string> topicsAdvertised;
