@@ -17,6 +17,10 @@ import zmq
 import uuid
 import os
 import struct
+import threading
+import random
+import signal
+import sys
 
 # Defaults and overrides
 ADV_SUB_PORT = 11312
@@ -30,6 +34,7 @@ OP_ADV = 0x01
 OP_SUB = 0x02
 UDP_MAX_SIZE = 512
 GUID_LENGTH = 16
+ADV_REPEAT_PERIOD = 1.0
 
 # We want this called once per process
 GUID = uuid.uuid1()
@@ -53,7 +58,6 @@ d = disc_zmq.DZMQ()
 d.subscribe('foo', lambda topic,msg: print('Got %s on %s'%(topic,msg)))
 d.spin()
     """
-
     def __init__(self, context=None):
         self.context = context or zmq.Context.instance()
 
@@ -105,6 +109,14 @@ d.spin()
         self.sub_connections = []
         self.poller = zmq.Poller()
         self.poller.register(self.bcast_recv, zmq.POLLIN)
+        # TODO: figure out what happens with multiple classes
+        self.adv_timer = None
+        self._advertisement_repeater()
+        signal.signal(signal.SIGINT, self._sighandler)
+
+    def _sighandler(self, sig, frame):
+        self.adv_timer.cancel()
+        sys.exit(0)
 
     def _advertise(self, publisher):
         """
@@ -257,6 +269,7 @@ d.spin()
         # as our GUID, then we must both be in the same process, in which case
         # we'd like to use an 'inproc://' address.  Otherwise, fall back on
         # 'tcp://'.
+        print('Addresses: %s'%(adv['addresses']))
         tcpaddrs = [a for a in adv['addresses'] if a.startswith('tcp')]
         inprocaddrs = [a for a in adv['addresses'] if a.startswith('inproc')]
         if adv['guid'] == GUID and inprocaddrs:
@@ -280,6 +293,11 @@ d.spin()
         sock.connect(addr)
         self.poller.register(sock, zmq.POLLIN)
         print('Connected to %s for %s'%(addr, adv['topic']))
+
+    def _advertisement_repeater(self):
+        [self._advertise(p) for p in self.publishers]
+        self.adv_timer = threading.Timer(ADV_REPEAT_PERIOD, self._advertisement_repeater)
+        self.adv_timer.start()
 
     def spinOnce(self, timeout=-1):
         """
