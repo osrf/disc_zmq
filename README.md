@@ -10,7 +10,7 @@ Raw message definitions (for which we will manually pack/unpack):
     * LENGTH: 2 bytes; length, in bytes, of the body to follow
 
   * advertisement (ADV):
-    * HDR
+    * HDR (OP = 1)
     * TOPICLENGTH: 2 bytes; length, in bytes, of TOPIC
     * TOPIC: string
     * GUID: 16 bytes; ID that is unique to the process, generated according to 
@@ -19,7 +19,7 @@ Raw message definitions (for which we will manually pack/unpack):
     * ADDRESSES: space-separated string of zeromq endpoint URIs
 
   * subscription (SUB):
-    * HDR
+    * HDR (OP = 2)
     * TOPICLENGTH: 2 bytes; length, in bytes, of TOPIC
     * TOPIC: string
 
