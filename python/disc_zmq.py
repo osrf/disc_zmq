@@ -78,7 +78,7 @@ class DZMQ:
 
         self.publishers = []
         self.subscribers = []
-        self.sub_sockets = {}
+        self.sub_connections = []
         self.poller = zmq.Poller()
         self.poller.register(self.bcast_recv, zmq.POLLIN)
 
@@ -144,7 +144,6 @@ class DZMQ:
 
             if op == OP_ADV:
                 adv = {}
-                print('Got ADV')
                 if len(data) != (length + 3):
                     print('Warning: message length mismatch (expected %d, but '
                           'received %d); ignoring.'%((length+3), len(data)))
@@ -162,7 +161,7 @@ class DZMQ:
                 offset += 2
                 adv['addresses'] = data[offset:offset+addresseslength].split()
                 offset += addresseslength
-                print(adv)
+                print('ADV: %s'%(adv))
                 subs = [s for s in self.subscribers if s['topic'] ==
 adv['topic']]
                 if subs:
@@ -170,7 +169,6 @@ adv['topic']]
 
             elif op == OP_SUB:
                 sub = {}
-                print('Got SUB')
                 if len(data) != (length + 3):
                     print('Warning: message length mismatch (expected %d, but '
                           'received %d); ignoring.'%((length+3), len(data)))
@@ -179,7 +177,7 @@ adv['topic']]
                 offset += 2
                 sub['topic'] = data[offset:offset+topiclength]
                 offset += topiclength
-                print(sub)
+                print('SUB: %s'%(sub))
                 # Are we publishing on that topic?
                 [self._advertise(p) for p in self.publishers if p['topic'] == sub['topic']]
 
@@ -188,24 +186,32 @@ adv['topic']]
 
         except Exception as e:
             print('Warning: exception while processing SUB or ADV message: %s'%(e))
+
     def _connect_subscriber(self, adv):
-        # TODO: check for existing connection to this guy
         tcpaddrs = [a for a in adv['addresses'] if a.startswith('tcp')]
         inprocaddrs = [a for a in adv['addresses'] if a.startswith('inproc')]
         if adv['guid'] == GUID and inprocaddrs:
             addr = inprocaddrs[0]
         else:
             addr = tcpaddrs[0]
+        # Check for existing connection to this guy
+        if [c for c in self.sub_connections if c['addr'] == addr]:
+            print('Not connecting again to %s'%(addr))
+            return
         sock = self.context.socket(zmq.SUB)
+        conn = {}
+        conn['socket'] = sock
+        conn['topic'] = adv['topic']
+        conn['addr'] = addr
         # Subscribe to all messages
         sock.setsockopt(zmq.SUBSCRIBE, '')
-        self.sub_sockets[sock] = adv['topic']
+        self.sub_connections.append(conn)
         sock.connect(addr)
         self.poller.register(sock, zmq.POLLIN)
         print('Connected to %s for %s'%(addr, adv['topic']))
 
     def spinOnce(self, timeout=0):
-        events = self.poller.poll(timeout)
+        events = self.poller.poll(int(timeout*1e3))
         for e in events:
             if e[0] == self.bcast_recv.fileno():
                 # Assume that we get the whole message in one go
@@ -213,15 +219,17 @@ adv['topic']]
             else:
                 # Must be a zmq socket
                 sock = e[0]
-                if sock in self.sub_sockets:
-                    topic = self.sub_sockets[sock]
+                conns = [c for c in self.sub_connections if c['socket'] == sock]
+                if conns:
+                    conn = conns[0]
+                    topic = conn['topic']
                     msg = sock.recv()
                     [s['cb'](topic, msg) for s in self.subscribers if s['topic']
 == topic]
 
     def spin(self):
         while True:
-            self.spinOnce(10)
+            self.spinOnce(0.01)
 
 # Stolen from rosgraph
 # https://github.com/ros/ros_comm/blob/hydro-devel/tools/rosgraph/src/rosgraph/network.py

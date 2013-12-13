@@ -15,7 +15,8 @@ else:
 d = disc_zmq.DZMQ()
 d.advertise(topic)
 
+i = 0
 while True:
-    #print('publishing %s on %s'%(msg, topic))
-    d.publish(topic, msg)
-    d.spinOnce(100)
+    d.publish(topic, '%s %d'%(msg, i))
+    d.spinOnce(0.2)
+    i += 1
