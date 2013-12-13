@@ -35,23 +35,46 @@ GUID_LENGTH = 16
 GUID = uuid.uuid1()
 
 class DZMQ:
+    """
+    This class provides a basic pub/sub system with discovery.  Basic
+    publisher:
+import disc_zmq
+d = disc_zmq.DZMQ()
+d.advertise('foo')
+msg = 'bar'
+while True:
+    d.publish('foo', msg)
+    d.spinOnce(0.1)
+
+    Basic subscriber:
+from __future__ import print_function
+import disc_zmq
+d = disc_zmq.DZMQ()
+d.subscribe('foo', lambda topic,msg: print('Got %s on %s'%(topic,msg)))
+d.spin()
+    """
 
     def __init__(self, context=None):
         self.context = context or zmq.Context.instance()
 
-        # Figure where we're broadcasting
+        # Determine network addresses.  Look at environment variables, and 
+        # fall back on defaults.
+
+        # What's our broadcast port?
         if DZMQ_PORT_KEY in os.environ:
             self.bcast_port = int(os.environ[DZMQ_PORT_KEY])
         else:
             # Take the default
             self.bcast_port = ADV_SUB_PORT
+        # What's our broadcast host?
         if DZMQ_HOST_KEY in os.environ:
             self.bcast_host = os.environ[DZMQ_HOST_KEY]
         else:
             # TODO: consider computing a more specific broadcast address based
             # on the result of get_local_addresses()
             self.bcast_host = ADV_SUB_HOST
-        # Figure out which of our addresses we'll give to others
+
+        # What IP address will we give to others to use when contacting us?
         if DZMQ_IP_KEY in os.environ:
             self.ipaddr = os.environ[DZMQ_IP_KEY]
         else:
@@ -66,16 +89,17 @@ class DZMQ:
                 # Take the first non-local one.
                 self.ipaddr = non_local_addrs[0]
 
-        # Set up to listen
+        # Set up to listen to broadcasts
         self.bcast_recv = socket.socket(socket.AF_INET, # Internet
                                         socket.SOCK_DGRAM) # UDP
         self.bcast_recv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.bcast_recv.bind((self.bcast_host, self.bcast_port))
-        # Set up to talk
+        # Set up to send broadcasts
         self.bcast_send = socket.socket(socket.AF_INET, # Internet
                                         socket.SOCK_DGRAM) # UDP
         self.bcast_send.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
+        # Bookkeeping (which should be cleaned up)
         self.publishers = []
         self.subscribers = []
         self.sub_connections = []
@@ -83,6 +107,9 @@ class DZMQ:
         self.poller.register(self.bcast_recv, zmq.POLLIN)
 
     def _advertise(self, publisher):
+        """
+        Internal method to pack and broadcast ADV message.
+        """
         body = ''
         body += struct.pack('<H', len(publisher['topic']))
         body += publisher['topic']
@@ -98,6 +125,9 @@ class DZMQ:
         self.bcast_send.sendto(msg, (self.bcast_host, self.bcast_port))
 
     def advertise(self, topic):
+        """
+        Advertise the given topic.  Do this before calling publish().
+        """
         publisher = {}
         publisher['socket'] = self.context.socket(zmq.PUB)
         inproc_addr = 'inproc://%s'%(topic)
@@ -111,31 +141,51 @@ class DZMQ:
         self.poller.register(publisher['socket'], zmq.POLLIN)
         self._advertise(publisher)
 
-    def subscribe(self, topic, cb):
-        subscriber = {}
-        subscriber['topic'] = topic
-        subscriber['cb'] = cb
-        self.subscribers.append(subscriber)
-
+    def _subscribe(self, subscriber):
+        """
+        Internal method to pack and broadcast SUB message.
+        """
         body = ''
         offset = 0
-        body += struct.pack('<H', len(topic))
+        body += struct.pack('<H', len(subscriber['topic']))
         offset += 2
-        body += topic
-        offset += len(topic)
+        body += subscriber['topic']
+        offset += len(subscriber['topic'])
 
         msg = ''
         msg += struct.pack('<BH', OP_SUB, len(body))
         msg += body
         self.bcast_send.sendto(msg, (self.bcast_host, self.bcast_port))
 
+    def subscribe(self, topic, cb):
+        """
+        Subscribe to the given topic.  Received messages will be passed to
+        given the callback, which should have the signature: cb(topic, msg).
+        """
+        # Record what we're doing
+        subscriber = {}
+        subscriber['topic'] = topic
+        subscriber['cb'] = cb
+        self.subscribers.append(subscriber)
+        self._subscribe(subscriber)
+
     def publish(self, topic, msg):
+        """
+        Publish the given message on the given topic.  You should have called
+        advertise() on the topic first.
+        """
         [p['socket'].send(msg) for p in self.publishers if p['topic'] == topic]
 
     def _handle_adv_sub(self, msg):
+        """
+        Internal method to handle receipt of SUB and ADV messages.
+        """
         try:
             data, addr = msg
-            print('%s sent %s'%(addr, data))
+            #print('%s sent %s'%(addr, data))
+            # Unpack the header, which is:
+            #   OP: 1 byte
+            #   LENGTH: 2 bytes; length, in bytes, of the body to follow
             offset = 0
             op = struct.unpack_from('<B', data, offset)[0]
             offset += 1
@@ -143,6 +193,12 @@ class DZMQ:
             offset += 2
 
             if op == OP_ADV:
+                # Unpack the ADV body,  which is:
+                #   TOPICLENGTH: 2 bytes; length, in bytes, of TOPIC
+                #   TOPIC: string
+                #   GUID: 16 bytes; ID that is unique to the process, generated according to RFC 4122
+                #   ADDRESSESLENGTH: 2 bytes; length, in bytes, of ADDRESSES
+                #   ADDRESSES: space-separated string of zeromq endpoint URIs
                 adv = {}
                 if len(data) != (length + 3):
                     print('Warning: message length mismatch (expected %d, but '
@@ -161,13 +217,17 @@ class DZMQ:
                 offset += 2
                 adv['addresses'] = data[offset:offset+addresseslength].split()
                 offset += addresseslength
-                print('ADV: %s'%(adv))
-                subs = [s for s in self.subscribers if s['topic'] ==
-adv['topic']]
-                if subs:
+                #print('ADV: %s'%(adv))
+                
+                # Are we interested in this topic?
+                if [s for s in self.subscribers if s['topic'] == adv['topic']]:
+                    # Yes, we're interested; make a connection
                     self._connect_subscriber(adv)
 
             elif op == OP_SUB:
+                # Unpack the SUB body,  which is:
+                #   TOPICLENGTH: 2 bytes; length, in bytes, of TOPIC
+                #   TOPIC: string
                 sub = {}
                 if len(data) != (length + 3):
                     print('Warning: message length mismatch (expected %d, but '
@@ -177,57 +237,88 @@ adv['topic']]
                 offset += 2
                 sub['topic'] = data[offset:offset+topiclength]
                 offset += topiclength
-                print('SUB: %s'%(sub))
-                # Are we publishing on that topic?
+                #print('SUB: %s'%(sub))
+
+                # If we're publishing this topic, re-advertise it to allow the
+                # new subscriber to find us.
                 [self._advertise(p) for p in self.publishers if p['topic'] == sub['topic']]
 
             else:
-                print('Got unrecognized OP: %d'%(op))
+                print('Warning: got unrecognized OP: %d'%(op))
 
         except Exception as e:
             print('Warning: exception while processing SUB or ADV message: %s'%(e))
 
     def _connect_subscriber(self, adv):
+        """
+        Internal method to connect to a publisher.
+        """
+        # Choose the best address to use.  If the publisher's GUID is the same
+        # as our GUID, then we must both be in the same process, in which case
+        # we'd like to use an 'inproc://' address.  Otherwise, fall back on
+        # 'tcp://'.
         tcpaddrs = [a for a in adv['addresses'] if a.startswith('tcp')]
         inprocaddrs = [a for a in adv['addresses'] if a.startswith('inproc')]
         if adv['guid'] == GUID and inprocaddrs:
             addr = inprocaddrs[0]
         else:
             addr = tcpaddrs[0]
-        # Check for existing connection to this guy
+        # Check for existing connection to this guy; we only want one.
         if [c for c in self.sub_connections if c['addr'] == addr]:
             print('Not connecting again to %s'%(addr))
             return
+        # Create a zmq socket
         sock = self.context.socket(zmq.SUB)
         conn = {}
         conn['socket'] = sock
         conn['topic'] = adv['topic']
         conn['addr'] = addr
-        # Subscribe to all messages
+        # Subscribe to all messages by specifying an empty filter string.
+        # By default, a SUB socket filters out all messages.
         sock.setsockopt(zmq.SUBSCRIBE, '')
         self.sub_connections.append(conn)
         sock.connect(addr)
         self.poller.register(sock, zmq.POLLIN)
         print('Connected to %s for %s'%(addr, adv['topic']))
 
-    def spinOnce(self, timeout=0):
-        events = self.poller.poll(int(timeout*1e3))
+    def spinOnce(self, timeout=-1):
+        """
+        Check once for incoming messages, invoking callbacks for received
+        messages.  Wait for up to timeout seconds.  For no waiting, set
+        timeout=0. To wait forever, set timeout=-1.
+        """
+        if timeout < 0:
+            # zmq interprets timeout=None as infinite
+            timeout = None
+        else:
+            # zmq wants the timeout in milliseconds
+            timeout = int(timeout*1e3)
+        # Look for sockets that are ready to read
+        events = self.poller.poll(timeout)
+        # Process the events
         for e in events:
+            # Is it the broadcast socket, which we manage?
             if e[0] == self.bcast_recv.fileno():
                 # Assume that we get the whole message in one go
                 self._handle_adv_sub(self.bcast_recv.recvfrom(UDP_MAX_SIZE))
             else:
                 # Must be a zmq socket
                 sock = e[0]
+                # Look up the connection associated with this socket
                 conns = [c for c in self.sub_connections if c['socket'] == sock]
                 if conns:
                     conn = conns[0]
                     topic = conn['topic']
+                    # Get the message (assuming that we get it all in one read)
                     msg = sock.recv()
+                    # Invoke all the callbacks registered for this topic.
                     [s['cb'](topic, msg) for s in self.subscribers if s['topic']
 == topic]
 
     def spin(self):
+        """
+        Give control to the message event loop.
+        """
         while True:
             self.spinOnce(0.01)
 

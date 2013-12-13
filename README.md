@@ -30,7 +30,9 @@ zeromq message definitions (for which we will let zeromq handle framing):
     * TOPIC: string
     * MESSAGE: opaque bytes
 
-Ports and addresses:
+Defaults and conventions:
 
   * Default port for SUB and ADV messages: 11312
   * By convention, SUB and ADV messages are sent to a broadcast address.
+  * All integers are sent little-endian
+
