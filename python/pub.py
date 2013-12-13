@@ -17,6 +17,6 @@ d.advertise(topic)
 
 i = 0
 while True:
-    d.publish(topic, '%s %d'%(msg, i))
+    d.publish(topic, '%s %d' % (msg, i))
     d.spinOnce(0.2)
     i += 1

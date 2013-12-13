@@ -13,8 +13,9 @@ if len(sys.argv) > 2:
 else:
     msg = 'foobar'
 
+
 def cb(topic, msg):
-    print('Got %s on %s'%(msg, topic))
+    print('Got %s on %s' % (msg, topic))
 
 d = disc_zmq.DZMQ()
 d.subscribe(topic, cb)
