@@ -1,12 +1,10 @@
 #ifndef __NODE_HH_INCLUDED__
 #define __NODE_HH_INCLUDED__
 
-#include <boost/function.hpp>
+#include <boost/algorithm/string.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
-#include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/uuid_io.hpp>
 #include <iostream>
 #include <map>
 #include <string>
@@ -35,11 +33,8 @@ class Node
       s_version_assert(2, 1);
 
       this->master = master;
-      this->context = new zmq::context_t(1);
       this->verbose = _verbose;
       this->timeout = 2500000;           // msecs
-      this->publisher = 0;
-      this->subscriber = 0;
 
       // ToDo Read this from getenv
       this->broadcastAddress = "255.255.255.255";
@@ -50,8 +45,26 @@ class Node
       if (this->verbose)
         std::cout << "Current host address: " << this->hostAddress << std::endl;
 
-      //s_catch_signals();
-      //connect_to_master();
+      // 0MQ
+      this->context = new zmq::context_t(1);
+      this->publisher = new zmq::socket_t(*this->context, ZMQ_PUB);
+      std::string ep = "tcp://" + this->hostAddress + ":*";
+      this->publisher->bind(ep.c_str());
+      char bindEndPoint[1024];
+      size_t size = sizeof(bindEndPoint);
+      this->publisher->getsockopt(ZMQ_LAST_ENDPOINT, &bindEndPoint, &size);
+      this->tcpEndpoint = bindEndPoint;
+      if (this->verbose)
+        std::cout << "Bind at: [" << this->tcpEndpoint << "]" << std::endl;
+
+      this->subscriber = new zmq::socket_t(*this->context, ZMQ_SUB);
+      const char *filter = "";
+      this->subscriber->setsockopt(ZMQ_SUBSCRIBE, filter, strlen(filter));
+
+      // Create the subscription thread
+      this->subscriptionThread = boost::thread(&Node::RecvTopicUpdates, this);
+
+      s_sleep(500);
 
       // Create the discovery thread
       this->discoveryThread = boost::thread(&Node::RecvDiscoveryUpdates, this);
@@ -67,6 +80,12 @@ class Node
         delete this->subscriber;
       if (this->context)
         delete this->context;
+
+      this->topicsAdvertised.clear();
+
+      Topics_M::iterator it;
+      for (it = this->topicsInfo.begin(); it != this->topicsInfo.end(); ++it)
+        it->second.clear();
     }
 
     std::string DetermineHost()
@@ -177,16 +196,16 @@ class Node
       while (true)
       {
         try {
-          char recvString[MAXRCVSTRING + 1]; // Buffer for echo string + \0
+          char recvString[MAXRCVSTRING]; // Buffer for data
           std::string sourceAddress;         // Address of datagram source
           unsigned short sourcePort;         // Port of datagram source
           int bytesRcvd = this->broadcastSocket->recvFrom(recvString,
             MAXRCVSTRING, sourceAddress, sourcePort);
-          recvString[bytesRcvd] = '\0';      // Terminate string
+          //recvString[bytesRcvd] = '\0';      // Terminate string
 
           if (this->verbose)
           {
-            cout << "Received " << recvString << " from " << sourceAddress <<
+            cout << "Received a discovery update from " << sourceAddress <<
                     ": " << sourcePort << endl;
           }
 
@@ -195,6 +214,37 @@ class Node
 
         } catch (SocketException &e) {
           cerr << e.what() << endl;
+        }
+      }
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Thread in charge of receiving the topic updates.
+    void RecvTopicUpdates()
+    {
+      while (true)
+      {
+        // Read the DATA message
+        std::string sender = s_recv(*this->subscriber);
+        std::string topic = s_recv(*this->subscriber);
+        std::string data = s_recv(*this->subscriber);
+
+        if (this->verbose)
+        {
+          std::cout << "Topic update received:" << std::endl;
+          std::cout << "\tSender: [" << sender << "]\n";
+          std::cout << "\tTopic: [" << topic << "]\n";
+          std::cout << "\tData: [" << data << "]\n";
+        }
+
+        {
+          boost::mutex::scoped_lock lock(this->mutexSub);
+          if (this->topicsSub.find(topic) != this->topicsSub.end())
+          {
+            // Execute the callback registered
+            Callback cb = this->topicsSub[topic];
+            cb(topic, data);
+          }
         }
       }
     }
@@ -218,6 +268,8 @@ class Node
       char *addresses;
 
       std::vector<std::string>::iterator it;
+      vector<string> advTopicsV;
+      vector<string> addressesV;
 
       // Read the operation code
       p = _msg;
@@ -232,7 +284,7 @@ class Node
       {
         std::cout << "\n--- DT: I received a new message ---\n";
         std::cout << "Header:" << std::endl;
-        std::cout << "\tOperation code: " << opCode << std::endl;
+        std::cout << "\tOperation code: " << msgTypesStr[opCode] << std::endl;
         std::cout << "\tBody length: " << bodyLength << std::endl;
       }
 
@@ -244,12 +296,12 @@ class Node
           p += sizeof(topicLength);
 
           // Read the topic
-          topic = new char(topicLength);
+          topic = new char[topicLength];
           memcpy(topic, p, topicLength);
           p += topicLength;
 
           // Read the GUID
-          guid = new char(16);
+          guid = new char[16];
           memcpy(guid, p, 16);
           p += 16;
 
@@ -258,7 +310,7 @@ class Node
           p += sizeof(addressesLength);
 
           // Read the list of addresses
-          addresses = new char(addressesLength);
+          addresses = new char[addressesLength];
           memcpy(addresses, p, addressesLength);
 
           if (this->verbose)
@@ -271,15 +323,46 @@ class Node
             std::cout << "\tAddresses: " << addresses << std::endl;
           }
 
+          // Split the list of addresses
+          boost::split(addressesV, addresses, boost::is_any_of(" "));
+          assert(addressesV.size() > 0);
+
+          // Split the list of advertised topics
+          boost::split(advTopicsV, topic, boost::is_any_of(" "));
+          assert(advTopicsV.size() > 0);
+
           // Update the hash of topics/addresses
-          /*{
-            boost::mutex::scoped_lock lock(this->mutexTopics);
-            if (this->topicsInfo.find(topic) == this->topicsInfo.end())
+          for (size_t i = 0; i < advTopicsV.size(); ++i)
+          {
             {
-              std::string topicAddresses(addresses);
-              this->topicsInfo[topic] = topicAddresses;
+              std::string advTopic = advTopicsV[i];
+
+              boost::mutex::scoped_lock lock(this->mutexTopicsInfo);
+
+              // Replace the list of addresses associated to the topic
+              this->topicsInfo[advTopic].clear();
+              for (size_t j = 0; j < addressesV.size(); ++j)
+              {
+                this->topicsInfo[advTopic].push_back(addressesV[j]);
+              }
+
+              // Check if we are interested in this topic
+              {
+                boost::mutex::scoped_lock lock(this->mutexSub);
+                if (this->topicsSub.find(advTopic) != this->topicsSub.end())
+                {
+                  for (size_t j = 0; j < addressesV.size(); ++j)
+                  {
+                    std::string address;
+                    address = this->topicsInfo[advTopic].at(j);
+                    this->subscriber->connect(address.c_str());
+                    if (this->verbose)
+                      std::cout << "Connecting to [" << address << "]\n";
+                  }
+                }
+              }
             }
-          }*/
+          }
 
           break;
 
@@ -289,9 +372,8 @@ class Node
           p += sizeof(topicLength);
 
           // Read the topic
-          topic = new char(topicLength);
+          topic = new char[topicLength];
           memcpy(topic, p, topicLength);
-          p += topicLength;
 
           if (this->verbose)
           {
@@ -301,7 +383,6 @@ class Node
           }
 
           // Check if I advertise the topic requested
-
           it = std::find(topicsAdvertised.begin(), topicsAdvertised.end(),
                          topic);
           if (it != topicsAdvertised.end())
@@ -317,7 +398,6 @@ class Node
           break;
       }
 
-      // Get Body length
       return 0;
     }
 
@@ -325,16 +405,6 @@ class Node
     /// \brief Send an ADVERTISE message to the discovery socket.
     int SendAdvertiseMsg(const std::string &_topic)
     {
-      // Header fields
-      uint8_t opCode;
-      uint16_t bodyLength;
-
-      // Body fields
-      uint16_t topicLength;
-      boost::uuids::uuid guid;
-      uint16_t addressesLength;
-      const char *addresses;
-
       if (this->verbose)
       {
         std::cout << "DT: Sending ADVERTISE message" << std::endl;
@@ -342,34 +412,30 @@ class Node
 
       // Header
       //   Fill the operation code
-      opCode = ADVERTISE;
+      uint8_t opCode = ADVERTISE;
 
       //   The body length will be filled later
 
       // Body
       //   Fill the topic length
-      topicLength = _topic.length();
+      uint16_t topicLength = _topic.size();
 
       //   topic comes as an argument
 
       //   Fill the GUID
-      guid = boost::uuids::random_generator()();
+      boost::uuids::uuid guid = boost::uuids::random_generator()();
 
       //   Fill the addresses length
-      std::string tcpAddress = "tcp://" + this->hostAddress +":" +
-          boost::lexical_cast<std::string>(this->broadcastPort);
       std::string inprocAddress = "inproc://" + _topic;
-      std::string allAddresses = tcpAddress + " " + inprocAddress;
-      addressesLength = allAddresses.size();
-
-      //   Fill the addresses
-      addresses = allAddresses.data();
+      std::string allAddresses = this->tcpEndpoint + " " + inprocAddress;
+      uint16_t addressesLength = allAddresses.size();
 
       // Prepare the data to send
-      bodyLength = sizeof(topicLength) + topicLength + sizeof(guid) +
+      uint16_t bodyLength = sizeof(topicLength) + topicLength + sizeof(guid) +
                    sizeof(addressesLength) + addressesLength;
 
-      char *data = new char[sizeof(opCode) + bodyLength];
+      int dataLength = sizeof(opCode) + sizeof(bodyLength) + bodyLength;
+      char *data = new char[dataLength];
       char *p = data;
       memcpy(p, &opCode, sizeof(opCode));
       p += sizeof(opCode);
@@ -377,16 +443,16 @@ class Node
       p += sizeof(bodyLength);
       memcpy(p, &topicLength, sizeof(topicLength));
       p += sizeof(topicLength);
-      memcpy(p, &_topic, topicLength);
+      memcpy(p, _topic.data(), topicLength);
       p += topicLength;
       memcpy(p, &guid, sizeof(guid));
       p += sizeof(guid);
       memcpy(p, &addressesLength, sizeof(addressesLength));
       p += sizeof(addressesLength);
-      memcpy(p, &addresses, addressesLength);
+      memcpy(p, allAddresses.data(), addressesLength);
 
       // Send the data through the UDP broadcast socket
-      this->broadcastSocket->sendTo(data, strlen(data),
+      this->broadcastSocket->sendTo(data, dataLength,
         this->broadcastAddress, this->broadcastPort);
     }
 
@@ -394,13 +460,6 @@ class Node
     /// \brief Send an ADVERTISE message to the discovery socket.
     int SendSubscribeMsg(const std::string &_topic)
     {
-      // Header fields
-      uint8_t opCode;
-      uint16_t bodyLength;
-
-      // Body fields
-      uint16_t topicLength;
-
       if (this->verbose)
       {
         std::cout << "DT: Sending SUBSCRIPTION message" << std::endl;
@@ -408,20 +467,21 @@ class Node
 
       // Header
       //   Fill the operation code
-      opCode = SUBSCRIBE;
+      uint8_t opCode = SUBSCRIBE;
 
       //   The body length will be filled later
 
       // Body
       //   Fill the topic length
-      topicLength = _topic.length();
+      uint16_t topicLength = _topic.size();
 
       //   topic comes as an argument
 
       // Prepare the data to send
-      bodyLength = sizeof(topicLength) + topicLength;
+      uint16_t bodyLength = sizeof(topicLength) + topicLength;
 
-      char *data = new char[sizeof(opCode) + bodyLength];
+      int dataLength = sizeof(opCode) + sizeof(bodyLength) + bodyLength;
+      char *data = new char[dataLength];
       char *p = data;
       memcpy(p, &opCode, sizeof(opCode));
       p += sizeof(opCode);
@@ -429,11 +489,11 @@ class Node
       p += sizeof(bodyLength);
       memcpy(p, &topicLength, sizeof(topicLength));
       p += sizeof(topicLength);
-      memcpy(p, &_topic, topicLength);
+      memcpy(p, _topic.data(), topicLength);
 
       // Send the data through the UDP broadcast socket
-      this->broadcastSocket->sendTo(data, strlen(data),
-        this->broadcastAddress, this->broadcastPort);
+      this->broadcastSocket->sendTo(data, dataLength,
+          this->broadcastAddress, this->broadcastPort);
     }
 
     //  ---------------------------------------------------------------------
@@ -443,7 +503,14 @@ class Node
     {
       assert(_topic != "");
 
-      this->topicsAdvertised.push_back(_topic);
+      {
+        boost::mutex::scoped_lock lock(this->mutexTopicsAdvertised);
+        this->topicsAdvertised.push_back(_topic);
+      }
+
+      std::string inprocEndpoint = "inproc://" + _topic;
+      this->publisher->bind(inprocEndpoint.c_str());
+
       this->SendAdvertiseMsg(_topic);
       return 0;
     }
@@ -456,6 +523,19 @@ class Node
     {
       assert(_topic != "");
 
+      zmsg msg;
+      std::string sender = this->tcpEndpoint + " inproc://" + _topic;
+      msg.push_back((char*)sender.c_str());
+      msg.push_back((char*)_topic.c_str());
+      msg.push_back((char*)_data.c_str());
+
+      if (this->verbose)
+      {
+        std::cout << "Message sent for publishing():" << std::endl;
+        msg.dump();
+      }
+      msg.send (*this->publisher);
+
       return 0;
     }
 
@@ -467,61 +547,63 @@ class Node
                   void(*_fp)(const std::string &, const std::string &))
     {
       assert(_topic != "");
+      if (this->verbose)
+        std::cout << "Subscribing to topic [" << _topic << "]\n";
 
-      // Discover the list of nodes that advertise _topic
+      // Register our interest on the topic
+      {
+        boost::mutex::scoped_lock lock(this->mutexSub);
+        // The last subscribe call replaces previous subscriptions. If this is
+        // a problem, we have to store a list of callbacks.
+        this->topicsSub[_topic] = _fp;
+      }
+
+      // Discover the list of nodes that publish on the topic
       this->SendSubscribeMsg(_topic);
       return 0;
     }
 
-    //  ---------------------------------------------------------------------
-    /// \brief Connect to the master.
-    void connect_to_master()
-    {
-      /*if (this->client)
-        delete this->client;
-
-      this->client = new zmq::socket_t(*this->context, ZMQ_DEALER);
-      int linger = 0;
-      this->client->setsockopt(ZMQ_LINGER, &linger, sizeof(linger));
-      this->identity = s_set_id(*this->client);
-      this->client->connect(this->master.c_str());
-      if (this->verbose)
-        s_console ("I: connecting to master at %s...", this->master.c_str());*/
-    }
-
   private:
+    // Master address
     std::string master;
-    zmq::context_t *context;
-    zmq::socket_t *publisher;   //  Socket to send topic updates
-    zmq::socket_t *subscriber;  //  Socket to receive topic updates
-    int verbose;                //  Print activity to stdout
-    int timeout;                //  Request timeout
-    std::string identity;
-    std::string hostAddress;
 
-    // Callbacks for the subscribed topics
-    typedef boost::function<void (const std::string &,
-                                  const std::string &)> Callback;
-    typedef std::map<std::string, Callback> Callback_M;
-    Callback_M callbacksSub;
-    boost::mutex mutexSub;
+    // Print activity to stdout
+    int verbose;
 
     // Hash with the topic/addresses information
     typedef std::vector<std::string> Topics_L;
     typedef std::map<std::string, Topics_L> Topics_M;
     Topics_M topicsInfo;
-    boost::mutex mutexTopics;
+    boost::mutex mutexTopicsInfo;
 
-    // List of advertised topics
+    // Advertised topics
     std::vector<std::string> topicsAdvertised;
+    boost::mutex mutexTopicsAdvertised;
+
+    // Subscribed topics
+    typedef boost::function<void (const std::string &,
+                                  const std::string &)> Callback;
+    typedef std::map<std::string, Callback> Callback_M;
+    Callback_M topicsSub;
+    boost::mutex mutexSub;
 
     // Thread in charge of the discovery
     boost::thread discoveryThread;
+    boost::thread subscriptionThread;
 
     // UDP broadcast thread
+    std::string hostAddress;
     std::string broadcastAddress;
     int broadcastPort;
     UDPSocket *broadcastSocket;
+
+    // 0MQ Sockets
+    zmq::context_t *context;
+    zmq::socket_t *publisher;   //  Socket to send topic updates
+    zmq::socket_t *subscriber;  //  Socket to receive topic updates
+    std::string tcpEndpoint;
+    std::string identity;
+    int timeout;                //  Request timeout
 };
 
 #endif

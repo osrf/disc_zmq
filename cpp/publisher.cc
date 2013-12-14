@@ -91,7 +91,7 @@ int main(int argc, char *argv[])
   Node node(master, verbose);
 
   // Advertise the topic /foo
-  int rc = node.advertise("/foo");
+  int rc = node.advertise(topic);
   if (rc != 0)
     std::cout << "Advertise did not work" << std::endl;
 
@@ -99,6 +99,7 @@ int main(int argc, char *argv[])
   for (int i = 0; i < numMessages; ++i)
   {
     node.publish(topic, data);
+    s_sleep(1000);
   }
 
   // Zzzzzz Zzzzzz
