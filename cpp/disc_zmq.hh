@@ -44,6 +44,7 @@ class Node
 
       // Create the GUID
       this->guid = boost::uuids::random_generator()();
+      this->guidStr = boost::lexical_cast<std::string>(this->guid);
 
       if (this->verbose)
         std::cout << "Current host address: " << this->hostAddress << std::endl;
@@ -59,7 +60,10 @@ class Node
       this->tcpEndpoint = bindEndPoint;
 
       if (this->verbose)
+      {
+        std::cout << "Current host address: " << this->hostAddress << std::endl;
         std::cout << "Bind at: [" << this->tcpEndpoint << "]" << std::endl;
+      }
 
       this->subscriber = new zmq::socket_t(*this->context, ZMQ_SUB);
       const char *filter = "";
@@ -200,7 +204,7 @@ class Node
         if (this->verbose)
         {
           cout << "Received a discovery update from " << sourceAddress <<
-                  ": " << sourcePort << endl;
+                  ": " << sourcePort << " (" << bytesRcvd << " bytes)" << endl;
         }
 
         if (this->DispatchDiscoveryMsg(recvString) != 0)
@@ -215,10 +219,16 @@ class Node
     /// \brief Thread in charge of receiving the topic updates.
     void RecvTopicUpdates()
     {
+      zmsg *msg = new zmsg (*this->subscriber);
+      if (this->verbose)
+      {
+        s_console ("I: received a topic update:");
+        msg->dump();
+      }
       // Read the DATA message
-      std::string sender = s_recv(*this->subscriber);
-      std::string topic = s_recv(*this->subscriber);
-      std::string data = s_recv(*this->subscriber);
+      std::string sender = std::string((char*)msg->pop_front().c_str());
+      std::string topic = std::string((char*)msg->pop_front().c_str());
+      std::string data = std::string((char*)msg->pop_front().c_str());
 
       if (this->verbose)
       {
@@ -234,6 +244,8 @@ class Node
         Callback cb = this->topicsSub[topic];
         cb(topic, data);
       }
+      else
+        std::cout << "Don't have topic registered\n";
     }
 
     //  ---------------------------------------------------------------------
@@ -250,12 +262,6 @@ class Node
       //  If we got a reply, process it
       if (items [0].revents & ZMQ_POLLIN)
       {
-        zmsg *msg = new zmsg (*this->subscriber);
-        if (this->verbose)
-        {
-          s_console ("I: received a topic update:");
-          msg->dump();
-        }
         this->RecvTopicUpdates();
       }
       else if (items [1].revents & ZMQ_POLLIN)
@@ -288,13 +294,15 @@ class Node
       // Body fields
       uint16_t topicLength;
       char *topic;
-      char *guid;
+      boost::uuids::uuid otherGuid;
       uint16_t addressesLength;
       char *addresses;
 
       std::vector<std::string>::iterator it;
       vector<string> advTopicsV;
       vector<string> addressesV;
+
+      std::string receivedGuid;
 
       // Read the operation code
       p = _msg;
@@ -327,10 +335,9 @@ class Node
           p += topicLength;
 
           // Read the GUID
-          guid = new char[16 + 1];
-          memcpy(guid, p, 16);
-          guid[16] = '\0';
-          p += 16;
+          memcpy(&otherGuid, p, otherGuid.size());
+          p += otherGuid.size();
+          receivedGuid = boost::lexical_cast<std::string>(otherGuid);
 
           // Read the address length
           memcpy(&addressesLength, p, sizeof(addressesLength));
@@ -346,7 +353,7 @@ class Node
             std::cout << "Body:" << std::endl;
             std::cout << "\tTopic length: " << topicLength << std::endl;
             std::cout << "\tTopic: [" << topic << "]" << std::endl;
-            std::cout << "\tGUID: " << guid << std::endl;
+            std::cout << "\tGUID: " << receivedGuid << std::endl;
             std::cout << "\tAddresses length: " << addressesLength << std::endl;
             std::cout << "\tAddresses: " << addresses << std::endl;
           }
@@ -385,26 +392,12 @@ class Node
                   it = std::find(addressesConnected.begin(),
                     addressesConnected.end(), address);
                   if (it != addressesConnected.end())
-                  {
-                    std::cout << "Address already connected\n";
                     continue;
-                  }
-
-                  std::cout << "Address not connected before\n";
 
                   // Connect to an inproc address only if GUID matches
-                  const std::string tmp =
-                    boost::lexical_cast<std::string>(this->guid);
-                  const char *myGuid = tmp.c_str();
-
-                  std::cout << "My GUID: " << myGuid << std::endl;
-                  std::cout << "Received GUID: " << guid << std::endl;
                   if (boost::starts_with(address, "inproc://") &&
-                      strcmp(guid, myGuid) != 0)
-                  {
-                    std::cout << "inproc already connected or incorrect GUID\n";
+                      this->guidStr.compare(receivedGuid) != 0)
                     continue;
-                  }
 
                   this->subscriber->connect(address.c_str());
                   addressesConnected.push_back(address);
@@ -504,6 +497,7 @@ class Node
       //const std::string tmp = boost::lexical_cast<std::string>(this->guid);
       //const char *myGuid = tmp.c_str();
       //std::cout << "Packing Guid:[" << myGuid << "]. Size: " << strlen(myGuid) << "\n";
+      //std::cout << "GUID size: " << this->guid.size() << std::endl;
       memcpy(p, &this->guid, this->guid.size());
       p += this->guid.size();
       memcpy(p, &addressesLength, sizeof(addressesLength));
@@ -572,6 +566,8 @@ class Node
         // Bind using the inproc address
         std::string inprocEndpoint = "inproc://" + _topic;
         this->publisher->bind(inprocEndpoint.c_str());
+        if (this->verbose)
+          std::cout << "Bind at: [" << inprocEndpoint << "]" << std::endl;
       }
 
       this->SendAdvertiseMsg(_topic);
@@ -663,6 +659,7 @@ class Node
 
     // GUID
     boost::uuids::uuid guid;
+    std::string guidStr;
 };
 
 #endif
