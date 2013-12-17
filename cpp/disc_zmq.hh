@@ -75,7 +75,7 @@ class Node
       if (this->context)
         delete this->context;
 
-      this->topicsAdvertised.clear();
+      this->topicsAdv.clear();
       this->addressesConnected.clear();
 
       Topics_M::iterator it;
@@ -287,7 +287,6 @@ class Node
       std::vector<std::string>::iterator it;
       vector<string> advTopicsV;
       vector<string> addressesV;
-
       std::string receivedGuid;
 
       // Read the operation code
@@ -340,7 +339,7 @@ class Node
             std::cout << "\t\tTopic length: " << topicLength << std::endl;
             std::cout << "\t\tTopic: [" << topic << "]" << std::endl;
             std::cout << "\t\tGUID: " << receivedGuid << std::endl;
-            std::cout << "\t\tAddresses length: " << addressesLength << std::endl;
+            std::cout << "\t\tAddresses length: " << addressesLength << "\n";
             std::cout << "\t\tAddresses: " << addresses << std::endl;
           }
 
@@ -426,9 +425,8 @@ class Node
           }
 
           // Check if I advertise the topic requested
-          it = std::find(topicsAdvertised.begin(), topicsAdvertised.end(),
-                         topic);
-          if (it != topicsAdvertised.end())
+          it = std::find(this->topicsAdv.begin(), this->topicsAdv.end(), topic);
+          if (it != this->topicsAdv.end())
           {
             // Send to the broadcast socket an ADVERTISE message
             this->SendAdvertiseMsg(*it);
@@ -548,10 +546,10 @@ class Node
 
       // Only bind to the topic and add to the advertised topic list, once
       std::vector<std::string>::iterator it;
-      it = std::find(topicsAdvertised.begin(), topicsAdvertised.end(), _topic);
-      if (it == topicsAdvertised.end())
+      it = std::find(this->topicsAdv.begin(), this->topicsAdv.end(), _topic);
+      if (it == this->topicsAdv.end())
       {
-        this->topicsAdvertised.push_back(_topic);
+        this->topicsAdv.push_back(_topic);
 
         // Bind using the inproc address
         std::string inprocEP = "inproc://" + _topic;
@@ -596,7 +594,7 @@ class Node
     /// \param[in] _topic Topic to be subscribed.
     /// \param[in] _fp Pointer to the callback function.
     int subscribe(const std::string &_topic,
-                  void(*_fp)(const std::string &, const std::string &))
+      void(*_fp)(const std::string &, const std::string &))
     {
       assert(_topic != "");
       if (this->verbose)
@@ -609,6 +607,39 @@ class Node
 
       // Discover the list of nodes that publish on the topic
       this->SendSubscribeMsg(_topic);
+      return 0;
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Advertise a new service call registering a callback.
+    /// \param[in] _topic Topic to be advertised.
+    /// \param[in] _fp Pointer to the callback function.
+    int srv_advertise(const std::string &_topic,
+      int(*_fp)(const std::string &, const std::string &, std::string &))
+    {
+      return 0;
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Request a new service to another component using a blocking call.
+    /// \param[in] _topic Topic requested.
+    /// \param[in] _data Data of the request.
+    /// \param[out] _response Response of the request.
+    int srv_request(const std::string &_topic, const std::string &_data,
+      std::string &_response)
+    {
+      return 0;
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Request a new service to another component using a non-blocking
+    /// call.
+    /// \param[in] _topic Topic requested.
+    /// \param[in] _data Data of the request.
+    /// \param[in] _fp Pointer to the callback function.
+    int srv_request_async(const std::string &_topic, const std::string &_data,
+      void(*_fp)(const std::string &_topic, int rc, const std::string &_rep))
+    {
       return 0;
     }
 
@@ -625,7 +656,7 @@ class Node
     Topics_M topicsInfo;
 
     // Advertised topics
-    std::vector<std::string> topicsAdvertised;
+    std::vector<std::string> topicsAdv;
 
     // Subscribed topics
     typedef boost::function<void (const std::string &,
