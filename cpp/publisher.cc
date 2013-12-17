@@ -7,6 +7,14 @@
 namespace po = boost::program_options;
 
 //  ---------------------------------------------------------------------
+/// \brief Function is called everytime a topic update is received.
+void cb(const std::string &_topic, const std::string &_data)
+{
+  assert(_topic != "");
+  std::cout << "Callback [" << _topic << "][" << _data << "]" << std::endl;
+}
+
+//  ---------------------------------------------------------------------
 /// \brief Print program usage.
 void PrintUsage(const po::options_description &_options)
 {
@@ -20,14 +28,16 @@ void PrintUsage(const po::options_description &_options)
 
 //  ---------------------------------------------------------------------
 /// \brief Read the command line arguments.
-int ReadArgs(int argc, char *argv[], bool &_verbose, std::string &_master,
-              std::string &_topic, std::string &_data, int &_numMessages)
+int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfSubscribe,
+  std::string &_master, std::string &_topic, std::string &_data,
+  int &_numMessages)
 {
   // Optional arguments
   po::options_description visibleDesc("Options");
   visibleDesc.add_options()
     ("help,h", "Produce help message")
     ("verbose,v", "Enable verbose mode")
+    ("self-subscribe,s", "Self-subscribe to the topic")
     ("master,m", po::value<std::string>(&_master)->default_value(""),
        "Set the master endpoint");
 
@@ -74,6 +84,10 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, std::string &_master,
   if (vm.count("master"))
     _master = vm["master"].as<std::string>();
 
+  _selfSubscribe = false;
+  if (vm.count("self-subscribe"))
+    _selfSubscribe = true;
+
   return 0;
 }
 
@@ -82,18 +96,28 @@ int main(int argc, char *argv[])
 {
   // Read the command line arguments
   std::string master, topic, data;
-  int numMessages;
-  bool verbose;
-  if (ReadArgs(argc, argv, verbose, master, topic, data, numMessages) != 0)
+  int numMessages, rc;
+  bool verbose, selfSubscribe;
+  if (ReadArgs(argc, argv, verbose, selfSubscribe, master, topic, data,
+               numMessages) != 0)
     return -1;
 
   // Transport node
   Node node(master, verbose);
 
   // Advertise the topic /foo
-  int rc = node.advertise(topic);
+  rc = node.advertise(topic);
   if (rc != 0)
     std::cout << "Advertise did not work" << std::endl;
+
+  if (selfSubscribe)
+  {
+    std::cout << "Self-subscribe enabled\n";
+    // Self-subscribe to the topic
+    rc = node.subscribe(topic, cb);
+    if (rc != 0)
+      std::cout << "Subscribe did not work" << std::endl;
+  }
 
   s_sleep(1000);
 

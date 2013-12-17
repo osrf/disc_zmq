@@ -2,7 +2,9 @@
 #define __NODE_HH_INCLUDED__
 
 #include <boost/algorithm/string.hpp>
+#include <boost/lexical_cast.hpp>
 #include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 #include <iostream>
 #include <map>
 #include <string>
@@ -55,6 +57,7 @@ class Node
       size_t size = sizeof(bindEndPoint);
       this->publisher->getsockopt(ZMQ_LAST_ENDPOINT, &bindEndPoint, &size);
       this->tcpEndpoint = bindEndPoint;
+
       if (this->verbose)
         std::cout << "Bind at: [" << this->tcpEndpoint << "]" << std::endl;
 
@@ -75,6 +78,7 @@ class Node
         delete this->context;
 
       this->topicsAdvertised.clear();
+      this->addressesConnected.clear();
 
       Topics_M::iterator it;
       for (it = this->topicsInfo.begin(); it != this->topicsInfo.end(); ++it)
@@ -317,13 +321,15 @@ class Node
           p += sizeof(topicLength);
 
           // Read the topic
-          topic = new char[topicLength];
+          topic = new char[topicLength + 1];
           memcpy(topic, p, topicLength);
+          topic[topicLength] = '\0';
           p += topicLength;
 
           // Read the GUID
-          guid = new char[16];
+          guid = new char[16 + 1];
           memcpy(guid, p, 16);
+          guid[16] = '\0';
           p += 16;
 
           // Read the address length
@@ -331,14 +337,15 @@ class Node
           p += sizeof(addressesLength);
 
           // Read the list of addresses
-          addresses = new char[addressesLength];
+          addresses = new char[addressesLength + 1];
           memcpy(addresses, p, addressesLength);
+          addresses[addressesLength] = '\0';
 
           if (this->verbose)
           {
             std::cout << "Body:" << std::endl;
             std::cout << "\tTopic length: " << topicLength << std::endl;
-            std::cout << "\tTopic: " << topic << std::endl;
+            std::cout << "\tTopic: [" << topic << "]" << std::endl;
             std::cout << "\tGUID: " << guid << std::endl;
             std::cout << "\tAddresses length: " << addressesLength << std::endl;
             std::cout << "\tAddresses: " << addresses << std::endl;
@@ -373,14 +380,41 @@ class Node
                 address = this->topicsInfo[advTopic].at(j);
                 try
                 {
+                  // If we're already connected, don't do it again
+                  std::vector<std::string>::iterator it;
+                  it = std::find(addressesConnected.begin(),
+                    addressesConnected.end(), address);
+                  if (it != addressesConnected.end())
+                  {
+                    std::cout << "Address already connected\n";
+                    continue;
+                  }
+
+                  std::cout << "Address not connected before\n";
+
+                  // Connect to an inproc address only if GUID matches
+                  const std::string tmp =
+                    boost::lexical_cast<std::string>(this->guid);
+                  const char *myGuid = tmp.c_str();
+
+                  std::cout << "My GUID: " << myGuid << std::endl;
+                  std::cout << "Received GUID: " << guid << std::endl;
+                  if (boost::starts_with(address, "inproc://") &&
+                      strcmp(guid, myGuid) != 0)
+                  {
+                    std::cout << "inproc already connected or incorrect GUID\n";
+                    continue;
+                  }
+
                   this->subscriber->connect(address.c_str());
+                  addressesConnected.push_back(address);
+                  if (this->verbose)
+                    std::cout << "Connected to [" << address << "]\n";
                 }
                 catch(const zmq::error_t& ex)
                 {
                   std::cout << "Error connecting [" << zmq_errno() << "]\n";
                 }
-                if (this->verbose)
-                  std::cout << "Connecting to [" << address << "]\n";
               }
             }
           }
@@ -393,14 +427,15 @@ class Node
           p += sizeof(topicLength);
 
           // Read the topic
-          topic = new char[topicLength];
+          topic = new char[topicLength + 1];
+          topic[topicLength] = '\0';
           memcpy(topic, p, topicLength);
 
           if (this->verbose)
           {
             std::cout << "Body:" << std::endl;
             std::cout << "\tTopic length: " << topicLength << std::endl;
-            std::cout << "\tTopic: " << topic << std::endl;
+            std::cout << "\tTopic: [" << topic << "]" << std::endl;
           }
 
           // Check if I advertise the topic requested
@@ -428,7 +463,7 @@ class Node
     {
       if (this->verbose)
       {
-        std::cout << "DT: Sending ADVERTISE message" << std::endl;
+        std::cout << "DT: Sending ADVERTISE message [" << _topic << "]\n";
       }
 
       // Header
@@ -466,8 +501,11 @@ class Node
       p += sizeof(topicLength);
       memcpy(p, _topic.data(), topicLength);
       p += topicLength;
-      memcpy(p, &guid, sizeof(guid));
-      p += sizeof(guid);
+      //const std::string tmp = boost::lexical_cast<std::string>(this->guid);
+      //const char *myGuid = tmp.c_str();
+      //std::cout << "Packing Guid:[" << myGuid << "]. Size: " << strlen(myGuid) << "\n";
+      memcpy(p, &this->guid, this->guid.size());
+      p += this->guid.size();
       memcpy(p, &addressesLength, sizeof(addressesLength));
       p += sizeof(addressesLength);
       memcpy(p, allAddresses.data(), addressesLength);
@@ -524,10 +562,17 @@ class Node
     {
       assert(_topic != "");
 
-      this->topicsAdvertised.push_back(_topic);
+      // Only bind to the topic and add to the advertised topic list, once
+      std::vector<std::string>::iterator it;
+      it = std::find(topicsAdvertised.begin(), topicsAdvertised.end(), _topic);
+      if (it == topicsAdvertised.end())
+      {
+        this->topicsAdvertised.push_back(_topic);
 
-      std::string inprocEndpoint = "inproc://" + _topic;
-      this->publisher->bind(inprocEndpoint.c_str());
+        // Bind using the inproc address
+        std::string inprocEndpoint = "inproc://" + _topic;
+        this->publisher->bind(inprocEndpoint.c_str());
+      }
 
       this->SendAdvertiseMsg(_topic);
       return 0;
@@ -598,6 +643,9 @@ class Node
                                   const std::string &)> Callback;
     typedef std::map<std::string, Callback> Callback_M;
     Callback_M topicsSub;
+
+    // Connected addresses
+    std::vector<std::string> addressesConnected;
 
     // UDP broadcast thread
     std::string hostAddress;
