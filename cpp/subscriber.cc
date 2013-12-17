@@ -12,7 +12,7 @@ namespace po = boost::program_options;
 void cb(const std::string &_topic, const std::string &_data)
 {
   assert(_topic != "");
-  std::cout << "Callback [" << _topic << "][" << _data << "]" << std::endl;
+  std::cout << "\nCallback [" << _topic << "][" << _data << "]" << std::endl;
 }
 
 //  ---------------------------------------------------------------------

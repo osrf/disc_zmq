@@ -11,7 +11,7 @@ namespace po = boost::program_options;
 void cb(const std::string &_topic, const std::string &_data)
 {
   assert(_topic != "");
-  std::cout << "Callback [" << _topic << "][" << _data << "]" << std::endl;
+  std::cout << "\nCallback [" << _topic << "][" << _data << "]" << std::endl;
 }
 
 //  ---------------------------------------------------------------------
@@ -112,14 +112,11 @@ int main(int argc, char *argv[])
 
   if (selfSubscribe)
   {
-    std::cout << "Self-subscribe enabled\n";
     // Self-subscribe to the topic
     rc = node.subscribe(topic, cb);
     if (rc != 0)
       std::cout << "Subscribe did not work" << std::endl;
   }
-
-  s_sleep(1000);
 
   // Publish data
   for (int i = 0; i < numMessages; ++i)
@@ -129,7 +126,7 @@ int main(int argc, char *argv[])
   }
 
   // Zzzzzz Zzzzzz
-  std::cout << "Press any key to exit" << std::endl;
+  std::cout << "\nPress any key to exit" << std::endl;
   getchar();
 
   return 0;

@@ -46,9 +46,6 @@ class Node
       this->guid = boost::uuids::random_generator()();
       this->guidStr = boost::lexical_cast<std::string>(this->guid);
 
-      if (this->verbose)
-        std::cout << "Current host address: " << this->hostAddress << std::endl;
-
       // 0MQ
       this->context = new zmq::context_t(1);
       this->publisher = new zmq::socket_t(*this->context, ZMQ_PUB);
@@ -203,7 +200,7 @@ class Node
 
         if (this->verbose)
         {
-          cout << "Received a discovery update from " << sourceAddress <<
+          cout << "\nReceived discovery update from " << sourceAddress <<
                   ": " << sourcePort << " (" << bytesRcvd << " bytes)" << endl;
         }
 
@@ -222,21 +219,13 @@ class Node
       zmsg *msg = new zmsg (*this->subscriber);
       if (this->verbose)
       {
-        s_console ("I: received a topic update:");
+        std::cout << "\nReceived topic update" << std::endl;
         msg->dump();
       }
       // Read the DATA message
-      std::string sender = std::string((char*)msg->pop_front().c_str());
+      msg->pop_front(); // Sender
       std::string topic = std::string((char*)msg->pop_front().c_str());
       std::string data = std::string((char*)msg->pop_front().c_str());
-
-      if (this->verbose)
-      {
-        std::cout << "Topic update received:" << std::endl;
-        std::cout << "\tSender: [" << sender << "]\n";
-        std::cout << "\tTopic: [" << topic << "]\n";
-        std::cout << "\tData: [" << data << "]\n";
-      }
 
       if (this->topicsSub.find(topic) != this->topicsSub.end())
       {
@@ -245,7 +234,7 @@ class Node
         cb(topic, data);
       }
       else
-        std::cout << "Don't have topic registered\n";
+        std::cerr << "I Don't have a callback for topic [" << topic << "]\n";
     }
 
     //  ---------------------------------------------------------------------
@@ -315,10 +304,10 @@ class Node
 
       if (this->verbose)
       {
-        std::cout << "\n--- DT: I received a new message ---\n";
-        std::cout << "Header:" << std::endl;
-        std::cout << "\tOperation code: " << msgTypesStr[opCode] << std::endl;
-        std::cout << "\tBody length: " << bodyLength << std::endl;
+        std::cout << "\t--------------------------------------" << std::endl;
+        std::cout << "\tHeader:" << std::endl;
+        std::cout << "\t\tOp code: " << msgTypesStr[opCode] << std::endl;
+        std::cout << "\t\tBody length: " << bodyLength << std::endl;
       }
 
       switch (opCode)
@@ -350,12 +339,12 @@ class Node
 
           if (this->verbose)
           {
-            std::cout << "Body:" << std::endl;
-            std::cout << "\tTopic length: " << topicLength << std::endl;
-            std::cout << "\tTopic: [" << topic << "]" << std::endl;
-            std::cout << "\tGUID: " << receivedGuid << std::endl;
-            std::cout << "\tAddresses length: " << addressesLength << std::endl;
-            std::cout << "\tAddresses: " << addresses << std::endl;
+            std::cout << "\tBody:" << std::endl;
+            std::cout << "\t\tTopic length: " << topicLength << std::endl;
+            std::cout << "\t\tTopic: [" << topic << "]" << std::endl;
+            std::cout << "\t\tGUID: " << receivedGuid << std::endl;
+            std::cout << "\t\tAddresses length: " << addressesLength << std::endl;
+            std::cout << "\t\tAddresses: " << addresses << std::endl;
           }
 
           // Split the list of addresses
@@ -399,10 +388,15 @@ class Node
                       this->guidStr.compare(receivedGuid) != 0)
                     continue;
 
+                  // Do not connect to a non-inproc if you can choose an inproc
+                  if (!boost::starts_with(address, "inproc://") &&
+                      this->guidStr.compare(receivedGuid) == 0)
+                    continue;
+
                   this->subscriber->connect(address.c_str());
                   addressesConnected.push_back(address);
                   if (this->verbose)
-                    std::cout << "Connected to [" << address << "]\n";
+                    std::cout << "\t* Connected to [" << address << "]\n";
                 }
                 catch(const zmq::error_t& ex)
                 {
@@ -426,9 +420,9 @@ class Node
 
           if (this->verbose)
           {
-            std::cout << "Body:" << std::endl;
-            std::cout << "\tTopic length: " << topicLength << std::endl;
-            std::cout << "\tTopic: [" << topic << "]" << std::endl;
+            std::cout << "\tBody:" << std::endl;
+            std::cout << "\t\tTopic length: " << topicLength << std::endl;
+            std::cout << "\t\tTopic: [" << topic << "]" << std::endl;
           }
 
           // Check if I advertise the topic requested
@@ -443,7 +437,7 @@ class Node
           break;
 
         default:
-          std::cerr << "DT: Unknown operation code [" << opCode << "]\n";
+          std::cerr << "Unknown op code [" << opCode << "] dispatching msg\n";
           break;
       }
 
@@ -456,7 +450,7 @@ class Node
     {
       if (this->verbose)
       {
-        std::cout << "DT: Sending ADVERTISE message [" << _topic << "]\n";
+        std::cout << "\t* Sending ADVERTISE message [" << _topic << "]\n";
       }
 
       // Header
@@ -494,10 +488,6 @@ class Node
       p += sizeof(topicLength);
       memcpy(p, _topic.data(), topicLength);
       p += topicLength;
-      //const std::string tmp = boost::lexical_cast<std::string>(this->guid);
-      //const char *myGuid = tmp.c_str();
-      //std::cout << "Packing Guid:[" << myGuid << "]. Size: " << strlen(myGuid) << "\n";
-      //std::cout << "GUID size: " << this->guid.size() << std::endl;
       memcpy(p, &this->guid, this->guid.size());
       p += this->guid.size();
       memcpy(p, &addressesLength, sizeof(addressesLength));
@@ -515,7 +505,7 @@ class Node
     {
       if (this->verbose)
       {
-        std::cout << "DT: Sending SUBSCRIPTION message" << std::endl;
+        std::cout << "\t * Sending SUBSCRIPTION message" << std::endl;
       }
 
       // Header
@@ -564,10 +554,13 @@ class Node
         this->topicsAdvertised.push_back(_topic);
 
         // Bind using the inproc address
-        std::string inprocEndpoint = "inproc://" + _topic;
-        this->publisher->bind(inprocEndpoint.c_str());
+        std::string inprocEP = "inproc://" + _topic;
+        this->publisher->bind(inprocEP.c_str());
         if (this->verbose)
-          std::cout << "Bind at: [" << inprocEndpoint << "]" << std::endl;
+        {
+          std::cout << "\nAdvertise(" << _topic << ")\n";
+          std::cout << "\t* Bind at: [" << inprocEP << "]\n";
+        }
       }
 
       this->SendAdvertiseMsg(_topic);
@@ -590,7 +583,7 @@ class Node
 
       if (this->verbose)
       {
-        std::cout << "Message sent for publishing():" << std::endl;
+        std::cout << "\nPublish(" << _topic << ")" << std::endl;
         msg.dump();
       }
       msg.send (*this->publisher);
@@ -607,7 +600,7 @@ class Node
     {
       assert(_topic != "");
       if (this->verbose)
-        std::cout << "Subscribing to topic [" << _topic << "]\n";
+        std::cout << "\nSubscribe (" << _topic << ")\n";
 
       // Register our interest on the topic
       // The last subscribe call replaces previous subscriptions. If this is
