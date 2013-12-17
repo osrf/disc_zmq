@@ -49,6 +49,7 @@ class Node
       // 0MQ
       this->context = new zmq::context_t(1);
       this->publisher = new zmq::socket_t(*this->context, ZMQ_PUB);
+      this->subscriber = new zmq::socket_t(*this->context, ZMQ_SUB);
       std::string ep = "tcp://" + this->hostAddress + ":*";
       this->publisher->bind(ep.c_str());
       char bindEndPoint[1024];
@@ -61,10 +62,6 @@ class Node
         std::cout << "Current host address: " << this->hostAddress << std::endl;
         std::cout << "Bind at: [" << this->tcpEndpoint << "]" << std::endl;
       }
-
-      this->subscriber = new zmq::socket_t(*this->context, ZMQ_SUB);
-      const char *filter = "";
-      this->subscriber->setsockopt(ZMQ_SUBSCRIBE, filter, strlen(filter));
     }
 
     //  ---------------------------------------------------------------------
@@ -223,8 +220,8 @@ class Node
         msg->dump();
       }
       // Read the DATA message
-      msg->pop_front(); // Sender
       std::string topic = std::string((char*)msg->pop_front().c_str());
+      msg->pop_front(); // Sender
       std::string data = std::string((char*)msg->pop_front().c_str());
 
       if (this->topicsSub.find(topic) != this->topicsSub.end())
@@ -393,6 +390,9 @@ class Node
                       this->guidStr.compare(receivedGuid) == 0)
                     continue;
 
+                  const char *filter = advTopic.c_str();
+                  this->subscriber->setsockopt(ZMQ_SUBSCRIBE, filter,
+                                               strlen(filter));
                   this->subscriber->connect(address.c_str());
                   addressesConnected.push_back(address);
                   if (this->verbose)
@@ -577,8 +577,8 @@ class Node
 
       zmsg msg;
       std::string sender = this->tcpEndpoint + " inproc://" + _topic;
-      msg.push_back((char*)sender.c_str());
       msg.push_back((char*)_topic.c_str());
+      msg.push_back((char*)sender.c_str());
       msg.push_back((char*)_data.c_str());
 
       if (this->verbose)

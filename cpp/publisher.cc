@@ -105,7 +105,7 @@ int main(int argc, char *argv[])
   // Transport node
   Node node(master, verbose);
 
-  // Advertise the topic /foo
+  // Advertise a topic
   rc = node.advertise(topic);
   if (rc != 0)
     std::cout << "Advertise did not work" << std::endl;
