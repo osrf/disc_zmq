@@ -50,12 +50,15 @@ class Node
       this->context = new zmq::context_t(1);
       this->publisher = new zmq::socket_t(*this->context, ZMQ_PUB);
       this->subscriber = new zmq::socket_t(*this->context, ZMQ_SUB);
+      this->srvRequester = new zmq::socket_t(*this->context, ZMQ_DEALER);
+      this->srvReplier = new zmq::socket_t(*this->context, ZMQ_DEALER);
       std::string ep = "tcp://" + this->hostAddress + ":*";
       this->publisher->bind(ep.c_str());
       char bindEndPoint[1024];
       size_t size = sizeof(bindEndPoint);
       this->publisher->getsockopt(ZMQ_LAST_ENDPOINT, &bindEndPoint, &size);
       this->tcpEndpoint = bindEndPoint;
+      this->addresses.push_back(this->tcpEndpoint);
 
       if (this->verbose)
       {
@@ -274,168 +277,158 @@ class Node
       char *p;
 
       // Header fields
-      uint8_t opCode;
-      uint16_t bodyLength;
+      uint16_t version;
+      boost::uuids::uuid otherGuid;
+      uint16_t topicLength;
+      char *advTopic;
+      uint8_t type;
+      uint16_t flags;
 
       // Body fields
-      uint16_t topicLength;
-      char *topic;
-      boost::uuids::uuid otherGuid;
-      uint16_t addressesLength;
-      char *addresses;
+      uint16_t addressLength;
+      char *address;
 
       std::vector<std::string>::iterator it;
-      vector<string> advTopicsV;
-      vector<string> addressesV;
-      std::string receivedGuid;
+      std::string otherGuidStr;
 
-      // Read the operation code
+      // Read the version
       p = _msg;
-      memcpy(&opCode, p, sizeof(opCode));
-      p += sizeof(opCode);
+      memcpy(&version, p, sizeof(version));
+      p += sizeof(version);
 
-      // Read the body length
-      memcpy(&bodyLength, p, sizeof(bodyLength));
-      p += sizeof(bodyLength);
+      // Read the GUID
+      memcpy(&otherGuid, p, otherGuid.size());
+      p += otherGuid.size();
+      otherGuidStr = boost::lexical_cast<std::string>(otherGuid);
+
+      // Read the topic length
+      memcpy(&topicLength, p, sizeof(topicLength));
+      p += sizeof(topicLength);
+
+      // Read the topic
+      advTopic = new char[topicLength + 1];
+      memcpy(advTopic, p, topicLength);
+      advTopic[topicLength] = '\0';
+      p += topicLength;
+
+      // Read the message type
+      memcpy(&type, p, sizeof(type));
+      p += sizeof(type);
+
+      // Read the flags
+      memcpy(&flags, p, sizeof(flags));
+      p += sizeof(flags);
 
       if (this->verbose)
       {
         std::cout << "\t--------------------------------------" << std::endl;
         std::cout << "\tHeader:" << std::endl;
-        std::cout << "\t\tOp code: " << msgTypesStr[opCode] << std::endl;
-        std::cout << "\t\tBody length: " << bodyLength << std::endl;
+        std::cout << "\t\tVersion: " << version << std::endl;
+        std::cout << "\t\tGUID: " << otherGuidStr << std::endl;
+        std::cout << "\t\tTopic length: " << topicLength << std::endl;
+        std::cout << "\t\tTopic: [" << advTopic << "]" << std::endl;
+        std::cout << "\t\tType: " << msgTypesStr[type] << std::endl;
+        std::cout << "\t\tFlags: " << flags << std::endl;
       }
 
-      switch (opCode)
+      switch (type)
       {
-        case ADVERTISE:
-          // Read the topic length
-          memcpy(&topicLength, p, sizeof(topicLength));
-          p += sizeof(topicLength);
-
-          // Read the topic
-          topic = new char[topicLength + 1];
-          memcpy(topic, p, topicLength);
-          topic[topicLength] = '\0';
-          p += topicLength;
-
-          // Read the GUID
-          memcpy(&otherGuid, p, otherGuid.size());
-          p += otherGuid.size();
-          receivedGuid = boost::lexical_cast<std::string>(otherGuid);
-
+        case ADV:
           // Read the address length
-          memcpy(&addressesLength, p, sizeof(addressesLength));
-          p += sizeof(addressesLength);
+          memcpy(&addressLength, p, sizeof(addressLength));
+          p += sizeof(addressLength);
 
-          // Read the list of addresses
-          addresses = new char[addressesLength + 1];
-          memcpy(addresses, p, addressesLength);
-          addresses[addressesLength] = '\0';
+          // Read the address
+          address = new char[addressLength + 1];
+          memcpy(address, p, addressLength);
+          address[addressLength] = '\0';
 
           if (this->verbose)
           {
             std::cout << "\tBody:" << std::endl;
-            std::cout << "\t\tTopic length: " << topicLength << std::endl;
-            std::cout << "\t\tTopic: [" << topic << "]" << std::endl;
-            std::cout << "\t\tGUID: " << receivedGuid << std::endl;
-            std::cout << "\t\tAddresses length: " << addressesLength << "\n";
-            std::cout << "\t\tAddresses: " << addresses << std::endl;
+            std::cout << "\t\tAddress length: " << addressLength << "\n";
+            std::cout << "\t\tAddress: " << address << std::endl;
           }
 
           // Split the list of addresses
-          boost::split(addressesV, addresses, boost::is_any_of(" "));
-          assert(addressesV.size() > 0);
+          //boost::split(addressesV, addresses, boost::is_any_of(" "));
+          //assert(addressesV.size() > 0);
 
           // Split the list of advertised topics
-          boost::split(advTopicsV, topic, boost::is_any_of(" "));
-          assert(advTopicsV.size() > 0);
+          //boost::split(advTopicsV, topic, boost::is_any_of(" "));
+          //assert(advTopicsV.size() > 0);
+
+
+          // If I already have the topic/address registered, just skip it
+          if (this->topicsInfo.find(advTopic) != this->topicsInfo.end())
+          {
+            std::vector<std::string>::iterator it;
+            it = find(this->topicsInfo[advTopic].begin(),
+                      this->topicsInfo[advTopic].end(), address);
+
+            if (it != this->topicsInfo[advTopic].end())
+              break;
+          }
 
           // Update the hash of topics/addresses
-          for (size_t i = 0; i < advTopicsV.size(); ++i)
+          this->topicsInfo[advTopic].push_back(address);
+
+          // Check if we are interested in this topic
+          if (this->topicsSub.find(advTopic) != this->topicsSub.end())
           {
-            std::string advTopic = advTopicsV[i];
-
-            // Replace the list of addresses associated to the topic
-            this->topicsInfo[advTopic].clear();
-            for (size_t j = 0; j < addressesV.size(); ++j)
+            try
             {
-              this->topicsInfo[advTopic].push_back(addressesV[j]);
+              // If we're already connected, don't do it again
+              std::vector<std::string>::iterator it;
+              it = std::find(this->addressesConnected.begin(),
+                             this->addressesConnected.end(), address);
+              if (it != this->addressesConnected.end())
+                break;
+
+              // Connect to an inproc address only if GUID matches
+              if (boost::starts_with(address, "inproc://") &&
+                  this->guidStr.compare(otherGuidStr) != 0)
+                break;
+
+              // Do not connect to a non-inproc if you can choose an inproc
+              if (!boost::starts_with(address, "inproc://") &&
+                  this->guidStr.compare(otherGuidStr) == 0)
+                break;
+
+              const char *filter = advTopic;
+              this->subscriber->setsockopt(ZMQ_SUBSCRIBE, filter,
+                                           strlen(filter));
+              this->subscriber->connect(address);
+              this->addressesConnected.push_back(address);
+              if (this->verbose)
+                std::cout << "\t* Connected to [" << address << "]\n";
             }
-
-            // Check if we are interested in this topic
-            if (this->topicsSub.find(advTopic) != this->topicsSub.end())
+            catch(const zmq::error_t& ex)
             {
-              for (size_t j = 0; j < addressesV.size(); ++j)
-              {
-                std::string address;
-                address = this->topicsInfo[advTopic].at(j);
-                try
-                {
-                  // If we're already connected, don't do it again
-                  std::vector<std::string>::iterator it;
-                  it = std::find(addressesConnected.begin(),
-                    addressesConnected.end(), address);
-                  if (it != addressesConnected.end())
-                    continue;
-
-                  // Connect to an inproc address only if GUID matches
-                  if (boost::starts_with(address, "inproc://") &&
-                      this->guidStr.compare(receivedGuid) != 0)
-                    continue;
-
-                  // Do not connect to a non-inproc if you can choose an inproc
-                  if (!boost::starts_with(address, "inproc://") &&
-                      this->guidStr.compare(receivedGuid) == 0)
-                    continue;
-
-                  const char *filter = advTopic.c_str();
-                  this->subscriber->setsockopt(ZMQ_SUBSCRIBE, filter,
-                                               strlen(filter));
-                  this->subscriber->connect(address.c_str());
-                  addressesConnected.push_back(address);
-                  if (this->verbose)
-                    std::cout << "\t* Connected to [" << address << "]\n";
-                }
-                catch(const zmq::error_t& ex)
-                {
-                  std::cout << "Error connecting [" << zmq_errno() << "]\n";
-                }
-              }
+              std::cout << "Error connecting [" << zmq_errno() << "]\n";
             }
           }
 
           break;
 
-        case SUBSCRIBE:
-          // Read the topic length
-          memcpy(&topicLength, p, sizeof(topicLength));
-          p += sizeof(topicLength);
-
-          // Read the topic
-          topic = new char[topicLength + 1];
-          topic[topicLength] = '\0';
-          memcpy(topic, p, topicLength);
-
-          if (this->verbose)
-          {
-            std::cout << "\tBody:" << std::endl;
-            std::cout << "\t\tTopic length: " << topicLength << std::endl;
-            std::cout << "\t\tTopic: [" << topic << "]" << std::endl;
-          }
+        case SUB:
 
           // Check if I advertise the topic requested
-          it = std::find(this->topicsAdv.begin(), this->topicsAdv.end(), topic);
+          it = std::find(this->topicsAdv.begin(), this->topicsAdv.end(),
+                         advTopic);
           if (it != this->topicsAdv.end())
           {
             // Send to the broadcast socket an ADVERTISE message
-            this->SendAdvertiseMsg(*it);
+            std::vector<std::string>::iterator it2;
+            for (it2 = this->addresses.begin(); it2 != this->addresses.end();
+                 ++it2)
+              this->SendAdvertiseMsg(*it, *it2);
           }
 
           break;
 
         default:
-          std::cerr << "Unknown op code [" << opCode << "] dispatching msg\n";
+          std::cerr << "Unknown msg type [" << type << "] dispatching msg\n";
           break;
       }
 
@@ -444,53 +437,44 @@ class Node
 
     //  ---------------------------------------------------------------------
     /// \brief Send an ADVERTISE message to the discovery socket.
-    int SendAdvertiseMsg(const std::string &_topic)
+    int SendAdvertiseMsg(const std::string &_topic, const std::string &_address)
     {
       if (this->verbose)
       {
-        std::cout << "\t* Sending ADVERTISE message [" << _topic << "]\n";
+        std::cout << "\t* Sending ADV msg [" << _topic << "][" << _address
+                  << "]" << std::endl;
       }
 
-      // Header
-      //   Fill the operation code
-      uint8_t opCode = ADVERTISE;
-
-      //   The body length will be filled later
-
-      // Body
-      //   Fill the topic length
+      uint16_t version = TRNSP_VERSION;
       uint16_t topicLength = _topic.size();
+      uint8_t type = ADV;
+      uint16_t flags = 0;
+      uint16_t addressLength = _address.size();
 
-      //   topic comes as an argument
+      //std::string inprocAddress = "inproc://" + _topic;
+      //std::string allAddresses = this->tcpEndpoint + " " + inprocAddress;
 
-      //   Fill the GUID
-      boost::uuids::uuid guid = this->guid;
-
-      //   Fill the addresses length
-      std::string inprocAddress = "inproc://" + _topic;
-      std::string allAddresses = this->tcpEndpoint + " " + inprocAddress;
-      uint16_t addressesLength = allAddresses.size();
-
-      // Prepare the data to send
-      uint16_t bodyLength = sizeof(topicLength) + topicLength + sizeof(guid) +
-                   sizeof(addressesLength) + addressesLength;
-
-      int dataLength = sizeof(opCode) + sizeof(bodyLength) + bodyLength;
+      // Pack the data
+      int dataLength = sizeof(version) + this->guid.size() +
+        sizeof(topicLength) + _topic.size() + sizeof(type) + sizeof(flags) +
+        sizeof(addressLength) + _address.size();
       char *data = new char[dataLength];
       char *p = data;
-      memcpy(p, &opCode, sizeof(opCode));
-      p += sizeof(opCode);
-      memcpy(p, &bodyLength, sizeof(bodyLength));
-      p += sizeof(bodyLength);
+      memcpy(p, &version, sizeof(version));
+      p += sizeof(version);
+      memcpy(p, &this->guid, this->guid.size());
+      p += this->guid.size();
       memcpy(p, &topicLength, sizeof(topicLength));
       p += sizeof(topicLength);
       memcpy(p, _topic.data(), topicLength);
       p += topicLength;
-      memcpy(p, &this->guid, this->guid.size());
-      p += this->guid.size();
-      memcpy(p, &addressesLength, sizeof(addressesLength));
-      p += sizeof(addressesLength);
-      memcpy(p, allAddresses.data(), addressesLength);
+      memcpy(p, &type, sizeof(type));
+      p += sizeof(type);
+      memcpy(p, &flags, sizeof(flags));
+      p += sizeof(flags);
+      memcpy(p, &addressLength, sizeof(addressLength));
+      p += sizeof(addressLength);
+      memcpy(p, _address.data(), _address.size());
 
       // Send the data through the UDP broadcast socket
       this->broadcastSocket->sendTo(data, dataLength,
@@ -506,35 +490,32 @@ class Node
         std::cout << "\t * Sending SUBSCRIPTION message" << std::endl;
       }
 
-      // Header
-      //   Fill the operation code
-      uint8_t opCode = SUBSCRIBE;
-
-      //   The body length will be filled later
-
-      // Body
-      //   Fill the topic length
+      uint16_t version = TRNSP_VERSION;
       uint16_t topicLength = _topic.size();
+      uint8_t type = SUB;
+      uint16_t flags = 0;
 
-      //   topic comes as an argument
+      // Pack the data
+      int dataLength = sizeof(version) + this->guid.size() +
+        sizeof(topicLength) + _topic.size() + sizeof(type) + sizeof(flags);
 
-      // Prepare the data to send
-      uint16_t bodyLength = sizeof(topicLength) + topicLength;
-
-      int dataLength = sizeof(opCode) + sizeof(bodyLength) + bodyLength;
       char *data = new char[dataLength];
       char *p = data;
-      memcpy(p, &opCode, sizeof(opCode));
-      p += sizeof(opCode);
-      memcpy(p, &bodyLength, sizeof(bodyLength));
-      p += sizeof(bodyLength);
+      memcpy(p, &version, sizeof(version));
+      p += sizeof(version);
+      memcpy(p, &this->guid, this->guid.size());
+      p += this->guid.size();
       memcpy(p, &topicLength, sizeof(topicLength));
       p += sizeof(topicLength);
       memcpy(p, _topic.data(), topicLength);
+      p += topicLength;
+      memcpy(p, &type, sizeof(type));
+      p += sizeof(type);
+      memcpy(p, &flags, sizeof(flags));
 
       // Send the data through the UDP broadcast socket
       this->broadcastSocket->sendTo(data, dataLength,
-          this->broadcastAddress, this->broadcastPort);
+        this->broadcastAddress, this->broadcastPort);
     }
 
     //  ---------------------------------------------------------------------
@@ -554,6 +535,7 @@ class Node
         // Bind using the inproc address
         std::string inprocEP = "inproc://" + _topic;
         this->publisher->bind(inprocEP.c_str());
+        this->addresses.push_back(inprocEP);
         if (this->verbose)
         {
           std::cout << "\nAdvertise(" << _topic << ")\n";
@@ -561,7 +543,9 @@ class Node
         }
       }
 
-      this->SendAdvertiseMsg(_topic);
+      for (it = this->addresses.begin(); it != this->addresses.end(); ++it)
+        this->SendAdvertiseMsg(_topic, *it);
+
       return 0;
     }
 
@@ -664,6 +648,9 @@ class Node
     typedef std::map<std::string, Callback> Callback_M;
     Callback_M topicsSub;
 
+    // My address
+    std::vector<std::string> addresses;
+
     // Connected addresses
     std::vector<std::string> addressesConnected;
 
@@ -675,8 +662,10 @@ class Node
 
     // 0MQ Sockets
     zmq::context_t *context;
-    zmq::socket_t *publisher;   //  Socket to send topic updates
-    zmq::socket_t *subscriber;  //  Socket to receive topic updates
+    zmq::socket_t *publisher;     //  Socket to send topic updates
+    zmq::socket_t *subscriber;    //  Socket to receive topic updates
+    zmq::socket_t *srvRequester;  //  Socket to send service call requests
+    zmq::socket_t *srvReplier;    //  Socket to receive service call requests
     std::string tcpEndpoint;
     std::string identity;
     int timeout;                //  Request timeout
