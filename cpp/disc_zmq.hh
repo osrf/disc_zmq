@@ -2,8 +2,6 @@
 #define __NODE_HH_INCLUDED__
 
 #include <boost/algorithm/string.hpp>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread/thread.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <iostream>
 #include <map>
@@ -34,13 +32,16 @@ class Node
 
       this->master = master;
       this->verbose = _verbose;
-      this->timeout = 2500000;           // msecs
+      this->timeout = 250;           // msecs
 
       // ToDo Read this from getenv
       this->broadcastAddress = "255.255.255.255";
       this->broadcastPort = 11312;
       this->broadcastSocket = new UDPSocket(this->broadcastPort);
       this->hostAddress = this->DetermineHost();
+
+      // Create the GUID
+      this->guid = boost::uuids::random_generator()();
 
       if (this->verbose)
         std::cout << "Current host address: " << this->hostAddress << std::endl;
@@ -60,14 +61,6 @@ class Node
       this->subscriber = new zmq::socket_t(*this->context, ZMQ_SUB);
       const char *filter = "";
       this->subscriber->setsockopt(ZMQ_SUBSCRIBE, filter, strlen(filter));
-
-      // Create the subscription thread
-      this->subscriptionThread = boost::thread(&Node::RecvTopicUpdates, this);
-
-      s_sleep(500);
-
-      // Create the discovery thread
-      this->discoveryThread = boost::thread(&Node::RecvDiscoveryUpdates, this);
     }
 
     //  ---------------------------------------------------------------------
@@ -193,28 +186,24 @@ class Node
     /// \brief Thread in charge of receiving the discovery updates.
     void RecvDiscoveryUpdates()
     {
-      while (true)
-      {
-        try {
-          char recvString[MAXRCVSTRING]; // Buffer for data
-          std::string sourceAddress;         // Address of datagram source
-          unsigned short sourcePort;         // Port of datagram source
-          int bytesRcvd = this->broadcastSocket->recvFrom(recvString,
-            MAXRCVSTRING, sourceAddress, sourcePort);
-          //recvString[bytesRcvd] = '\0';      // Terminate string
+     try {
+        char recvString[MAXRCVSTRING];     // Buffer for data
+        std::string sourceAddress;         // Address of datagram source
+        unsigned short sourcePort;         // Port of datagram source
+        int bytesRcvd = this->broadcastSocket->recvFrom(recvString,
+          MAXRCVSTRING, sourceAddress, sourcePort);
 
-          if (this->verbose)
-          {
-            cout << "Received a discovery update from " << sourceAddress <<
-                    ": " << sourcePort << endl;
-          }
-
-          if (this->DispatchDiscoveryMsg(recvString) != 0)
-            std::cerr << "Something went wrong parsing a discovery message\n";
-
-        } catch (SocketException &e) {
-          cerr << e.what() << endl;
+        if (this->verbose)
+        {
+          cout << "Received a discovery update from " << sourceAddress <<
+                  ": " << sourcePort << endl;
         }
+
+        if (this->DispatchDiscoveryMsg(recvString) != 0)
+          std::cerr << "Something went wrong parsing a discovery message\n";
+
+      } catch (SocketException &e) {
+        cerr << e.what() << endl;
       }
     }
 
@@ -222,30 +211,62 @@ class Node
     /// \brief Thread in charge of receiving the topic updates.
     void RecvTopicUpdates()
     {
-      while (true)
-      {
-        // Read the DATA message
-        std::string sender = s_recv(*this->subscriber);
-        std::string topic = s_recv(*this->subscriber);
-        std::string data = s_recv(*this->subscriber);
+      // Read the DATA message
+      std::string sender = s_recv(*this->subscriber);
+      std::string topic = s_recv(*this->subscriber);
+      std::string data = s_recv(*this->subscriber);
 
+      if (this->verbose)
+      {
+        std::cout << "Topic update received:" << std::endl;
+        std::cout << "\tSender: [" << sender << "]\n";
+        std::cout << "\tTopic: [" << topic << "]\n";
+        std::cout << "\tData: [" << data << "]\n";
+      }
+
+      if (this->topicsSub.find(topic) != this->topicsSub.end())
+      {
+        // Execute the callback registered
+        Callback cb = this->topicsSub[topic];
+        cb(topic, data);
+      }
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Receive the next message.
+    void SpinOnce()
+    {
+      //  Poll socket for a reply, with timeout
+      zmq::pollitem_t items [] = {
+        { *this->subscriber, 0, ZMQ_POLLIN, 0 },
+        { 0, this->broadcastSocket->sockDesc, ZMQ_POLLIN, 0 }
+      };
+      zmq::poll(&items[0], 2, this->timeout);
+
+      //  If we got a reply, process it
+      if (items [0].revents & ZMQ_POLLIN)
+      {
+        zmsg *msg = new zmsg (*this->subscriber);
         if (this->verbose)
         {
-          std::cout << "Topic update received:" << std::endl;
-          std::cout << "\tSender: [" << sender << "]\n";
-          std::cout << "\tTopic: [" << topic << "]\n";
-          std::cout << "\tData: [" << data << "]\n";
+          s_console ("I: received a topic update:");
+          msg->dump();
         }
+        this->RecvTopicUpdates();
+      }
+      else if (items [1].revents & ZMQ_POLLIN)
+      {
+        this->RecvDiscoveryUpdates();
+      }
+    }
 
-        {
-          boost::mutex::scoped_lock lock(this->mutexSub);
-          if (this->topicsSub.find(topic) != this->topicsSub.end())
-          {
-            // Execute the callback registered
-            Callback cb = this->topicsSub[topic];
-            cb(topic, data);
-          }
-        }
+    //  ---------------------------------------------------------------------
+    /// \brief Receive messages forever.
+    void Spin()
+    {
+      while (true)
+      {
+        this->SpinOnce();
       }
     }
 
@@ -334,32 +355,32 @@ class Node
           // Update the hash of topics/addresses
           for (size_t i = 0; i < advTopicsV.size(); ++i)
           {
+            std::string advTopic = advTopicsV[i];
+
+            // Replace the list of addresses associated to the topic
+            this->topicsInfo[advTopic].clear();
+            for (size_t j = 0; j < addressesV.size(); ++j)
             {
-              std::string advTopic = advTopicsV[i];
+              this->topicsInfo[advTopic].push_back(addressesV[j]);
+            }
 
-              boost::mutex::scoped_lock lock(this->mutexTopicsInfo);
-
-              // Replace the list of addresses associated to the topic
-              this->topicsInfo[advTopic].clear();
+            // Check if we are interested in this topic
+            if (this->topicsSub.find(advTopic) != this->topicsSub.end())
+            {
               for (size_t j = 0; j < addressesV.size(); ++j)
               {
-                this->topicsInfo[advTopic].push_back(addressesV[j]);
-              }
-
-              // Check if we are interested in this topic
-              {
-                boost::mutex::scoped_lock lock(this->mutexSub);
-                if (this->topicsSub.find(advTopic) != this->topicsSub.end())
+                std::string address;
+                address = this->topicsInfo[advTopic].at(j);
+                try
                 {
-                  for (size_t j = 0; j < addressesV.size(); ++j)
-                  {
-                    std::string address;
-                    address = this->topicsInfo[advTopic].at(j);
-                    this->subscriber->connect(address.c_str());
-                    if (this->verbose)
-                      std::cout << "Connecting to [" << address << "]\n";
-                  }
+                  this->subscriber->connect(address.c_str());
                 }
+                catch(const zmq::error_t& ex)
+                {
+                  std::cout << "Error connecting [" << zmq_errno() << "]\n";
+                }
+                if (this->verbose)
+                  std::cout << "Connecting to [" << address << "]\n";
               }
             }
           }
@@ -423,7 +444,7 @@ class Node
       //   topic comes as an argument
 
       //   Fill the GUID
-      boost::uuids::uuid guid = boost::uuids::random_generator()();
+      boost::uuids::uuid guid = this->guid;
 
       //   Fill the addresses length
       std::string inprocAddress = "inproc://" + _topic;
@@ -503,10 +524,7 @@ class Node
     {
       assert(_topic != "");
 
-      {
-        boost::mutex::scoped_lock lock(this->mutexTopicsAdvertised);
-        this->topicsAdvertised.push_back(_topic);
-      }
+      this->topicsAdvertised.push_back(_topic);
 
       std::string inprocEndpoint = "inproc://" + _topic;
       this->publisher->bind(inprocEndpoint.c_str());
@@ -551,12 +569,9 @@ class Node
         std::cout << "Subscribing to topic [" << _topic << "]\n";
 
       // Register our interest on the topic
-      {
-        boost::mutex::scoped_lock lock(this->mutexSub);
-        // The last subscribe call replaces previous subscriptions. If this is
-        // a problem, we have to store a list of callbacks.
-        this->topicsSub[_topic] = _fp;
-      }
+      // The last subscribe call replaces previous subscriptions. If this is
+      // a problem, we have to store a list of callbacks.
+      this->topicsSub[_topic] = _fp;
 
       // Discover the list of nodes that publish on the topic
       this->SendSubscribeMsg(_topic);
@@ -574,22 +589,15 @@ class Node
     typedef std::vector<std::string> Topics_L;
     typedef std::map<std::string, Topics_L> Topics_M;
     Topics_M topicsInfo;
-    boost::mutex mutexTopicsInfo;
 
     // Advertised topics
     std::vector<std::string> topicsAdvertised;
-    boost::mutex mutexTopicsAdvertised;
 
     // Subscribed topics
     typedef boost::function<void (const std::string &,
                                   const std::string &)> Callback;
     typedef std::map<std::string, Callback> Callback_M;
     Callback_M topicsSub;
-    boost::mutex mutexSub;
-
-    // Thread in charge of the discovery
-    boost::thread discoveryThread;
-    boost::thread subscriptionThread;
 
     // UDP broadcast thread
     std::string hostAddress;
@@ -604,6 +612,9 @@ class Node
     std::string tcpEndpoint;
     std::string identity;
     int timeout;                //  Request timeout
+
+    // GUID
+    boost::uuids::uuid guid;
 };
 
 #endif

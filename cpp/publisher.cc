@@ -95,11 +95,13 @@ int main(int argc, char *argv[])
   if (rc != 0)
     std::cout << "Advertise did not work" << std::endl;
 
+  s_sleep(1000);
+
   // Publish data
   for (int i = 0; i < numMessages; ++i)
   {
     node.publish(topic, data);
-    s_sleep(1000);
+    node.SpinOnce();
   }
 
   // Zzzzzz Zzzzzz

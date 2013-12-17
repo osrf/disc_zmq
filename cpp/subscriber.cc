@@ -105,9 +105,11 @@ int main(int argc, char *argv[])
       std::cout << "subscribe for topic [" << topics[i] << "] did not work\n";
   }
 
+  node.Spin();
+
   // Zzzzzz Zzzzzz
-  std::cout << "Press any key to exit" << std::endl;
-  getchar();
+  //std::cout << "Press any key to exit" << std::endl;
+  //getchar();
 
   return 0;
 }
