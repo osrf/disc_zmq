@@ -16,9 +16,9 @@ import socket
 import zmq
 import uuid
 import os
-import platform
 import struct
 import threading
+import random
 import signal
 import sys
 
@@ -35,6 +35,10 @@ OP_SUB = 0x02
 UDP_MAX_SIZE = 512
 GUID_LENGTH = 16
 ADV_REPEAT_PERIOD = 1.0
+VERSION = 0x0001
+TOPIC_MAXLENGTH = 192
+FLAGS_LENGTH = 16
+ADDRESS_MAXLENGTH = 267
 
 # We want this called once per process
 GUID = uuid.uuid1()
@@ -97,8 +101,6 @@ d.spin()
         self.bcast_recv = socket.socket(socket.AF_INET, # Internet
                                         socket.SOCK_DGRAM) # UDP
         self.bcast_recv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if platform.system() in ['Darwin']:
-            self.bcast_recv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         self.bcast_recv.bind((self.bcast_host, self.bcast_port))
         # Set up to send broadcasts
         self.bcast_send = socket.socket(socket.AF_INET, # Internet
@@ -111,10 +113,24 @@ d.spin()
         self.sub_connections = []
         self.poller = zmq.Poller()
         self.poller.register(self.bcast_recv, zmq.POLLIN)
+        self.poller.register(self.pub_socket, zmq.POLLIN)
         # TODO: figure out what happens with multiple classes
         self.adv_timer = None
         self._advertisement_repeater()
         signal.signal(signal.SIGINT, self._sighandler)
+
+        # Set up the one pub socket that we'll use
+        self.pub_socket = self.context.socket(zmq.PUB)
+        self.pub_socket_addrs = []
+        tcp_addr = 'tcp://%s'%(self.ipaddr)
+        tcp_port = self.pub_socket.bind_to_random_port(tcp_addr)
+        tcp_addr += ':%d'%(tcp_port)
+        if len(tcp_addr) > ADDRESS_MAXLENGTH:
+            raise Exception('TCP address length %d exceeds maximum %d'
+                            %(len(tcp_addr), ADDRESS_MAXLENGTH))
+        self.pub_socket_addrs.append(tcp_addr) 
+        self.sub_socket = self.context.socket(zmq.SUB)
+        self.sub_socket_addrs = []
 
     def _sighandler(self, sig, frame):
         self.adv_timer.cancel()
@@ -124,31 +140,44 @@ d.spin()
         """
         Internal method to pack and broadcast ADV message.
         """
-        body = ''
-        body += struct.pack('<H', len(publisher['topic']))
-        body += publisher['topic']
-        for i in range(0,GUID_LENGTH):
-            body += struct.pack('<B', (GUID.int >> i*8) & 0xFF)
-        addrs_string = ' '.join(publisher['addrs'])
-        body += struct.pack('<H', len(addrs_string))
-        body += addrs_string
-
         msg = ''
-        msg += struct.pack('<BH', OP_ADV, len(body))
-        msg += body
-        self.bcast_send.sendto(msg, (self.bcast_host, self.bcast_port))
+        msg += struct.pack('<H', VERSION)
+        # TODO: pack the GUID more efficiently; should only need one call to
+        # struct.pack()
+        for i in range(0,GUID_LENGTH):
+            msg += struct.pack('<B', (GUID.int >> i*8) & 0xFF)
+        msg += struct.pack('<H', len(publisher['topic']))
+        msg += publisher['topic']
+        msg += struct.pack('<B', OP_ADV)
+        # Flags unused for now
+        flags = [0x00] * FLAGS_LENGTH
+        msg += struct.pack('<%dB'%(FLAGS_LENGTH), *flags)
+        # We'll announce once for each address
+        for addr in publisher['addrs']:
+            if addr.startswith('inproc'):
+                # We don't broadcast inproc addresses        
+                continue
+            # Struct objects copy by value
+            mymsg = msg
+            mymsg += struct.pack('<H', len(addr))
+            mymsg += addr
+            self.bcast_send.sendto(mymsg, (self.bcast_host, self.bcast_port))
 
     def advertise(self, topic):
         """
         Advertise the given topic.  Do this before calling publish().
         """
+        if len(topic) > TOPIC_MAXLENGTH:
+            raise Exception('Topic length %d exceeds maximum %d'
+                            %(len(topic), TOPICLENGTH))
         publisher = {}
-        publisher['socket'] = self.context.socket(zmq.PUB)
+        publisher['socket'] = self.pub_socket
         inproc_addr = 'inproc://%s'%(topic)
-        publisher['socket'].bind(inproc_addr)
-        tcp_addr = 'tcp://%s'%(self.ipaddr)
-        tcp_port = publisher['socket'].bind_to_random_port(tcp_addr)
-        tcp_addr += ':%d'%(tcp_port)
+        # TODO: consider race condition in this test and set:
+        if inproc_addr not in self.pub_socket_addrs:
+            publisher['socket'].bind(inproc_addr)
+            self.pub_socket_addrs.append(inproc_addr)
+        tcp_addr = [a for a in self.pub_socket_addrs if a.startswith('inproc')][0]
         publisher['addrs'] = [inproc_addr, tcp_addr]
         publisher['topic'] = topic
         self.publishers.append(publisher)
@@ -159,16 +188,19 @@ d.spin()
         """
         Internal method to pack and broadcast SUB message.
         """
-        body = ''
-        offset = 0
-        body += struct.pack('<H', len(subscriber['topic']))
-        offset += 2
-        body += subscriber['topic']
-        offset += len(subscriber['topic'])
-
         msg = ''
-        msg += struct.pack('<BH', OP_SUB, len(body))
-        msg += body
+        msg += struct.pack('<H', VERSION)
+        # TODO: pack the GUID more efficiently; should only need one call to
+        # struct.pack()
+        for i in range(0,GUID_LENGTH):
+            msg += struct.pack('<B', (GUID.int >> i*8) & 0xFF)
+        msg += struct.pack('<H', len(subscriber['topic']))
+        msg += subscriber['topic']
+        msg += struct.pack('<B', OP_SUB)
+        # Flags unused for now
+        flags = [0x00] * FLAGS_LENGTH
+        msg += struct.pack('<%dB'%(FLAGS_LENGTH), *flags)
+        # Null body
         self.bcast_send.sendto(msg, (self.bcast_host, self.bcast_port))
 
     def subscribe(self, topic, cb):
@@ -197,41 +229,37 @@ d.spin()
         try:
             data, addr = msg
             #print('%s sent %s'%(addr, data))
-            # Unpack the header, which is:
-            #   OP: 1 byte
-            #   LENGTH: 2 bytes; length, in bytes, of the body to follow
+            # Unpack the header
             offset = 0
+            version = struct.unpack_from('<H', data, offset)[0]
+            if version != VERSION:
+                print('Warning: mismatched protocol versions: %d != %d'
+                      %(version, VERSION))
+            offset += 2
+            guid = 0
+            for i in range(0,GUID_LENGTH):
+                guid += struct.unpack_from('<B', data, offset)[0] << 8*i
+                offset += 1
+            topiclength = struct.unpack_from('<H', data, offset)[0]
+            offset += 2
+            topic = data[offset:offset+topiclength]
+            offset += topiclength
             op = struct.unpack_from('<B', data, offset)[0]
             offset += 1
-            length = struct.unpack_from('<H', data, offset)[0]
-            offset += 2
+            flags = struct.unpack_from('<%dB'%(FLAGS_LENGTH), data, offset)
+            offset += FLAGS_LENGTH
 
             if op == OP_ADV:
-                # Unpack the ADV body,  which is:
-                #   TOPICLENGTH: 2 bytes; length, in bytes, of TOPIC
-                #   TOPIC: string
-                #   GUID: 16 bytes; ID that is unique to the process, generated according to RFC 4122
-                #   ADDRESSESLENGTH: 2 bytes; length, in bytes, of ADDRESSES
-                #   ADDRESSES: space-separated string of zeromq endpoint URIs
+                # Unpack the ADV body
                 adv = {}
-                if len(data) != (length + 3):
-                    print('Warning: message length mismatch (expected %d, but '
-                          'received %d); ignoring.'%((length+3), len(data)))
-                    return
-                topiclength = struct.unpack_from('<H', data, offset)[0]
+                adv['topic'] = topic
+                adv['guid'] = guid
+                adv['flags'] = flags
+                addresslength = struct.unpack_from('<H', data, offset)[0]
                 offset += 2
-                adv['topic'] = data[offset:offset+topiclength]
-                offset += topiclength
-                guid = 0
-                for i in range(0,GUID_LENGTH):
-                    guid += struct.unpack_from('<B', data, offset)[0] << 8*i
-                    offset += 1
-                adv['guid'] = uuid.UUID(int=guid) 
-                addresseslength = struct.unpack_from('<H', data, offset)[0]
-                offset += 2
-                adv['addresses'] = data[offset:offset+addresseslength].split()
-                offset += addresseslength
-                #print('ADV: %s'%(adv))
+                adv['address'] = data[offset:offset+addresslength]
+                offset += addresslength
+                print('ADV: %s'%(adv))
                 
                 # Are we interested in this topic?
                 if [s for s in self.subscribers if s['topic'] == adv['topic']]:
@@ -239,23 +267,11 @@ d.spin()
                     self._connect_subscriber(adv)
 
             elif op == OP_SUB:
-                # Unpack the SUB body,  which is:
-                #   TOPICLENGTH: 2 bytes; length, in bytes, of TOPIC
-                #   TOPIC: string
-                sub = {}
-                if len(data) != (length + 3):
-                    print('Warning: message length mismatch (expected %d, but '
-                          'received %d); ignoring.'%((length+3), len(data)))
-                    return
-                topiclength = struct.unpack_from('<H', data, offset)[0]
-                offset += 2
-                sub['topic'] = data[offset:offset+topiclength]
-                offset += topiclength
-                #print('SUB: %s'%(sub))
-
+                # The SUB body is NULL
+                print('SUB: %s'%(sub))
                 # If we're publishing this topic, re-advertise it to allow the
                 # new subscriber to find us.
-                [self._advertise(p) for p in self.publishers if p['topic'] == sub['topic']]
+                [self._advertise(p) for p in self.publishers if p['topic'] == topic]
 
             else:
                 print('Warning: got unrecognized OP: %d'%(op))
@@ -271,14 +287,21 @@ d.spin()
         # as our GUID, then we must both be in the same process, in which case
         # we'd like to use an 'inproc://' address.  Otherwise, fall back on
         # 'tcp://'.
-        print('Addresses: %s'%(adv['addresses']))
-        tcpaddrs = [a for a in adv['addresses'] if a.startswith('tcp')]
-        inprocaddrs = [a for a in adv['addresses'] if a.startswith('inproc')]
-        if adv['guid'] == GUID and inprocaddrs:
-            addr = inprocaddrs[0]
+        if adv['address'].startswith('tcp'):
+            pass
+        elif adv['address'].startswith('inproc') and adv['guid'] != GUID:
+                # Not us; skip it
+                return
         else:
-            addr = tcpaddrs[0]
-        # Check for existing connection to this guy; we only want one.
+            print('Warning: ingoring unknown address type: %s'%(adv['address']))
+            return
+
+        # Are we already connected to this publisher for this topic?
+        for i in range(0, len(self.sub_connections)):
+            c = self.sub_connections[i]
+            if c['topic'] == adv['topic'] and c['guid'] == adv['guid']:
+                # It's the same publisher
+        
         if [c for c in self.sub_connections if c['addr'] == addr]:
             print('Not connecting again to %s'%(addr))
             return
@@ -288,6 +311,7 @@ d.spin()
         conn['socket'] = sock
         conn['topic'] = adv['topic']
         conn['addr'] = addr
+        conn['guid'] = adv['guid']
         # Subscribe to all messages by specifying an empty filter string.
         # By default, a SUB socket filters out all messages.
         sock.setsockopt(zmq.SUBSCRIBE, '')
@@ -357,7 +381,8 @@ def get_local_addresses(use_ipv6=False):
         return _local_addrs
 
     local_addrs = None
-    if platform.system() in ['Linux', 'FreeBSD', 'Darwin']:
+    import platform
+    if platform.system() in ['Linux', 'FreeBSD']:
         # unix-only branch
         v4addrs = []
         v6addrs = []
