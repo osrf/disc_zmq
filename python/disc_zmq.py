@@ -24,7 +24,6 @@ import sys
 
 # Defaults and overrides
 ADV_SUB_PORT = 11312
-ADV_SUB_HOST = '255.255.255.255'
 DZMQ_PORT_KEY = 'DZMQ_BCAST_PORT'
 DZMQ_HOST_KEY = 'DZMQ_BCAST_HOST'
 DZMQ_IP_KEY = 'DZMQ_IP'
@@ -68,20 +67,6 @@ d.spin()
         # Determine network addresses.  Look at environment variables, and 
         # fall back on defaults.
 
-        # What's our broadcast port?
-        if DZMQ_PORT_KEY in os.environ:
-            self.bcast_port = int(os.environ[DZMQ_PORT_KEY])
-        else:
-            # Take the default
-            self.bcast_port = ADV_SUB_PORT
-        # What's our broadcast host?
-        if DZMQ_HOST_KEY in os.environ:
-            self.bcast_host = os.environ[DZMQ_HOST_KEY]
-        else:
-            # TODO: consider computing a more specific broadcast address based
-            # on the result of get_local_addresses()
-            self.bcast_host = ADV_SUB_HOST
-
         # What IP address will we give to others to use when contacting us?
         if DZMQ_IP_KEY in os.environ:
             self.ipaddr = os.environ[DZMQ_IP_KEY]
@@ -96,6 +81,22 @@ d.spin()
             else:
                 # Take the first non-local one.
                 self.ipaddr = non_local_addrs[0]
+
+        # What's our broadcast port?
+        if DZMQ_PORT_KEY in os.environ:
+            self.bcast_port = int(os.environ[DZMQ_PORT_KEY])
+        else:
+            # Take the default
+            self.bcast_port = ADV_SUB_PORT
+        # What's our broadcast host?
+        if DZMQ_HOST_KEY in os.environ:
+            self.bcast_host = os.environ[DZMQ_HOST_KEY]
+        else:
+            # TODO: consider computing a more specific broadcast address based
+            # on the result of get_local_addresses()
+            # The following line isn't correct because it doesn't take account
+            # of the netmask, but it allows the code to run without sudo on OSX.
+            self.bcast_host = '.'.join(self.ipaddr.split('.')[:-1] + ['255'])
 
         # Set up to listen to broadcasts
         self.bcast_recv = socket.socket(socket.AF_INET, # Internet
