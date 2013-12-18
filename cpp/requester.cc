@@ -99,16 +99,16 @@ int main(int argc, char *argv[])
 {
   // Read the command line arguments
   std::string master, topic, data, response;
-  int numMessages, rc;
+  int numSrvs, rc;
   bool verbose, async;
   if (ReadArgs(argc, argv, verbose, async, master, topic, data,
-               numMessages) != 0)
+               numSrvs) != 0)
     return -1;
 
   // Transport node
   Node node(master, verbose);
 
-  for (int i = 0; i < numMessages; ++i)
+  for (int i = 0; i < numSrvs; ++i)
   {
     if (async)
       rc = node.srv_request_async(topic, data, cb);
