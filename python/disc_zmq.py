@@ -101,6 +101,8 @@ d.spin()
         self.bcast_recv = socket.socket(socket.AF_INET, # Internet
                                         socket.SOCK_DGRAM) # UDP
         self.bcast_recv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if platform.system() in ['Darwin']:
+            self.bcast_recv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         self.bcast_recv.bind((self.bcast_host, self.bcast_port))
         # Set up to send broadcasts
         self.bcast_send = socket.socket(socket.AF_INET, # Internet
@@ -382,7 +384,7 @@ def get_local_addresses(use_ipv6=False):
 
     local_addrs = None
     import platform
-    if platform.system() in ['Linux', 'FreeBSD']:
+    if platform.system() in ['Linux', 'FreeBSD', 'Darwin']:
         # unix-only branch
         v4addrs = []
         v6addrs = []
