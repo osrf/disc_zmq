@@ -8,27 +8,30 @@ namespace po = boost::program_options;
 
 //  ---------------------------------------------------------------------
 /// \brief Function is called everytime a topic update is received.
-void cb(const std::string &_topic, const std::string &_data)
+void cb(const std::string &_topic, int _rc, const std::string &_rep)
 {
   assert(_topic != "");
-  std::cout << "\nCallback [" << _topic << "][" << _data << "]" << std::endl;
+  if (_rc == 0)
+    std::cout << "\nCallback [" << _topic << "][" << _rep << "]" << std::endl;
+  else
+    std::cout << "\nCallback [" << _topic << "] Error" << std::endl;
 }
 
 //  ---------------------------------------------------------------------
 /// \brief Print program usage.
 void PrintUsage(const po::options_description &_options)
 {
-  std::cout << "Usage: publisher [options] <topic> <data> <numMessages>\n"
+  std::cout << "Usage: requester [options] <topic> <data> <numSrvCalls>\n"
             << "Positional arguments:\n"
             << "  <topic>               Topic to publish\n"
             << "  <data>                Data\n"
-            << "  <numMessages>         Number of messages to send\n"
+            << "  <numSrvCalls>         Number of service calls to request\n"
             << _options << "\n";
 }
 
 //  ---------------------------------------------------------------------
 /// \brief Read the command line arguments.
-int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfSubscribe,
+int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_async,
   std::string &_master, std::string &_topic, std::string &_data,
   int &_numMessages)
 {
@@ -37,7 +40,7 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfSubscribe,
   visibleDesc.add_options()
     ("help,h", "Produce help message")
     ("verbose,v", "Enable verbose mode")
-    ("self-subscribe,s", "Self-subscribe to the topic")
+    ("asynchronous,a", "Enable asynchronous requests")
     ("master,m", po::value<std::string>(&_master)->default_value(""),
        "Set the master endpoint");
 
@@ -46,7 +49,7 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfSubscribe,
   hiddenDesc.add_options()
     ("topic", po::value<std::string>(&_topic), "Topic to publish")
     ("data", po::value<std::string>(&_data), "Data")
-    ("num", po::value<int>(&_numMessages), "Number of messages to send");
+    ("num", po::value<int>(&_numMessages), "Number of srv calls to request");
 
   // All the arguments
   po::options_description desc("Options");
@@ -81,12 +84,12 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfSubscribe,
   if (vm.count("verbose"))
     _verbose = true;
 
+  _async = false;
+  if (vm.count("asynchronous"))
+    _async = true;
+
   if (vm.count("master"))
     _master = vm["master"].as<std::string>();
-
-  _selfSubscribe = false;
-  if (vm.count("self-subscribe"))
-    _selfSubscribe = true;
 
   return 0;
 }
@@ -95,33 +98,30 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfSubscribe,
 int main(int argc, char *argv[])
 {
   // Read the command line arguments
-  std::string master, topic, data;
-  int numMessages, rc;
-  bool verbose, selfSubscribe;
-  if (ReadArgs(argc, argv, verbose, selfSubscribe, master, topic, data,
-               numMessages) != 0)
+  std::string master, topic, data, response;
+  int numSrvs, rc;
+  bool verbose, async;
+  if (ReadArgs(argc, argv, verbose, async, master, topic, data,
+               numSrvs) != 0)
     return -1;
 
   // Transport node
   Node node(master, verbose);
 
-  // Advertise a topic
-  rc = node.advertise(topic);
-  if (rc != 0)
-    std::cout << "Advertise did not work" << std::endl;
-
-  if (selfSubscribe)
+  for (int i = 0; i < numSrvs; ++i)
   {
-    // Self-subscribe to the topic
-    rc = node.subscribe(topic, cb);
+    if (async)
+      rc = node.srv_request_async(topic, data, cb);
+    else
+    {
+      rc = node.srv_request(topic, data, response);
+      if (rc == 0)
+        std::cout << "Result: " << response << std::endl;
+    }
+
     if (rc != 0)
-      std::cout << "Subscribe did not work" << std::endl;
-  }
+      std::cout << "srv_request did not work" << std::endl;
 
-  // Publish data
-  for (int i = 0; i < numMessages; ++i)
-  {
-    node.publish(topic, data);
     node.SpinOnce();
   }
 

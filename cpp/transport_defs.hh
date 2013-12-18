@@ -8,14 +8,22 @@
 #include <cstddef>
 
 //  This is the version of Gazebo transport we implement
-#define TRNSP_VERSION       "0.1.0"
+#define TRNSP_VERSION       1
 
 // Message types
-#define ADVERTISE						1
-#define SUBSCRIBE						2
+#define ADV									1
+#define SUB     						2
+#define ADV_SVC							3
+#define SUB_SVC  						4
+#define PUB									5
+#define REQ									6
+#define REP_OK							7
+#define REP_ERROR						8
 
 static char *msgTypesStr [] = {
-    NULL, (char*)"ADVERTISE", (char*)"SUBSCRIBE"
+    NULL, (char*)"ADVERTISE", (char*)"SUBSCRIBE", (char*)"ADV_SRV",
+    (char*)"SUB_SVC", (char*)"PUB", (char*)"REQ", (char*)"SRV_REP_OK",
+    (char*)"SRV_REP_ERROR"
 };
 
 #endif

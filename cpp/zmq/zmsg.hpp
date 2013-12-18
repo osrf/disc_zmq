@@ -282,7 +282,7 @@ public:
    }
 
    void dump() {
-      std::cerr << "--------------------------------------" << std::endl;
+      std::cerr << "\t--------------------------------------" << std::endl;
       for (unsigned int part_nbr = 0; part_nbr < m_part_data.size(); part_nbr++) {
           ustring data = m_part_data [part_nbr];
 
@@ -292,7 +292,7 @@ public:
               if (data [char_nbr] < 32 || data [char_nbr] > 127)
                   is_text = 0;
 
-          std::cerr << "[" << std::setw(3) << std::setfill('0') << (int) data.size() << "] ";
+          std::cerr << "\t[" << std::setw(3) << std::setfill('0') << (int) data.size() << "] ";
           for (unsigned int char_nbr = 0; char_nbr < data.size(); char_nbr++) {
               if (is_text) {
                   std::cerr << (char) data [char_nbr];

@@ -24,7 +24,7 @@ import sys
 
 # Defaults and overrides
 ADV_SUB_PORT = 11312
-ADV_SUB_HOST = None
+ADV_SUB_HOST = '255.255.255.255'
 DZMQ_PORT_KEY = 'DZMQ_BCAST_PORT'
 DZMQ_HOST_KEY = 'DZMQ_BCAST_HOST'
 DZMQ_IP_KEY = 'DZMQ_IP'
@@ -38,7 +38,6 @@ ADV_REPEAT_PERIOD = 1.0
 
 # We want this called once per process
 GUID = uuid.uuid1()
-
 
 class DZMQ:
     """
@@ -62,7 +61,7 @@ d.spin()
     def __init__(self, context=None):
         self.context = context or zmq.Context.instance()
 
-        # Determine network addresses.  Look at environment variables, and
+        # Determine network addresses.  Look at environment variables, and 
         # fall back on defaults.
 
         # What's our broadcast port?
@@ -86,7 +85,6 @@ d.spin()
             # Try to find a non-loopback interface and then compute a broadcast
             # address from it.
             addrs = get_local_addresses()
-            print(addrs)
             non_local_addrs = [x for x in addrs if not x.startswith('127')]
             if len(non_local_addrs) == 0:
                 # Oh, well.
@@ -95,18 +93,16 @@ d.spin()
                 # Take the first non-local one.
                 self.ipaddr = non_local_addrs[0]
 
-        self.bcast_host = '.'.join(self.ipaddr.split('.')[:-1] + ['255'])
-
         # Set up to listen to broadcasts
-        self.bcast_recv = socket.socket(socket.AF_INET,  # Internet
-                                        socket.SOCK_DGRAM)  # UDP
+        self.bcast_recv = socket.socket(socket.AF_INET, # Internet
+                                        socket.SOCK_DGRAM) # UDP
         self.bcast_recv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         if platform.system() in ['Darwin']:
             self.bcast_recv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         self.bcast_recv.bind((self.bcast_host, self.bcast_port))
         # Set up to send broadcasts
-        self.bcast_send = socket.socket(socket.AF_INET,  # Internet
-                                        socket.SOCK_DGRAM)  # UDP
+        self.bcast_send = socket.socket(socket.AF_INET, # Internet
+                                        socket.SOCK_DGRAM) # UDP
         self.bcast_send.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
         # Bookkeeping (which should be cleaned up)
@@ -131,7 +127,7 @@ d.spin()
         body = ''
         body += struct.pack('<H', len(publisher['topic']))
         body += publisher['topic']
-        for i in range(0, GUID_LENGTH):
+        for i in range(0,GUID_LENGTH):
             body += struct.pack('<B', (GUID.int >> i*8) & 0xFF)
         addrs_string = ' '.join(publisher['addrs'])
         body += struct.pack('<H', len(addrs_string))
@@ -148,11 +144,11 @@ d.spin()
         """
         publisher = {}
         publisher['socket'] = self.context.socket(zmq.PUB)
-        inproc_addr = 'inproc://%s' % (topic)
+        inproc_addr = 'inproc://%s'%(topic)
         publisher['socket'].bind(inproc_addr)
-        tcp_addr = 'tcp://%s' % (self.ipaddr)
+        tcp_addr = 'tcp://%s'%(self.ipaddr)
         tcp_port = publisher['socket'].bind_to_random_port(tcp_addr)
-        tcp_addr += ':%d' % (tcp_port)
+        tcp_addr += ':%d'%(tcp_port)
         publisher['addrs'] = [inproc_addr, tcp_addr]
         publisher['topic'] = topic
         self.publishers.append(publisher)
@@ -220,23 +216,23 @@ d.spin()
                 adv = {}
                 if len(data) != (length + 3):
                     print('Warning: message length mismatch (expected %d, but '
-                          'received %d); ignoring.' % ((length+3), len(data)))
+                          'received %d); ignoring.'%((length+3), len(data)))
                     return
                 topiclength = struct.unpack_from('<H', data, offset)[0]
                 offset += 2
                 adv['topic'] = data[offset:offset+topiclength]
                 offset += topiclength
                 guid = 0
-                for i in range(0, GUID_LENGTH):
+                for i in range(0,GUID_LENGTH):
                     guid += struct.unpack_from('<B', data, offset)[0] << 8*i
                     offset += 1
-                adv['guid'] = uuid.UUID(int=guid)
+                adv['guid'] = uuid.UUID(int=guid) 
                 addresseslength = struct.unpack_from('<H', data, offset)[0]
                 offset += 2
                 adv['addresses'] = data[offset:offset+addresseslength].split()
                 offset += addresseslength
                 #print('ADV: %s'%(adv))
-
+                
                 # Are we interested in this topic?
                 if [s for s in self.subscribers if s['topic'] == adv['topic']]:
                     # Yes, we're interested; make a connection
@@ -249,7 +245,7 @@ d.spin()
                 sub = {}
                 if len(data) != (length + 3):
                     print('Warning: message length mismatch (expected %d, but '
-                          'received %d); ignoring.' % ((length+3), len(data)))
+                          'received %d); ignoring.'%((length+3), len(data)))
                     return
                 topiclength = struct.unpack_from('<H', data, offset)[0]
                 offset += 2
@@ -262,10 +258,10 @@ d.spin()
                 [self._advertise(p) for p in self.publishers if p['topic'] == sub['topic']]
 
             else:
-                print('Warning: got unrecognized OP: %d' % (op))
+                print('Warning: got unrecognized OP: %d'%(op))
 
         except Exception as e:
-            print('Warning: exception while processing SUB or ADV message: %s' % (e))
+            print('Warning: exception while processing SUB or ADV message: %s'%(e))
 
     def _connect_subscriber(self, adv):
         """
@@ -275,7 +271,7 @@ d.spin()
         # as our GUID, then we must both be in the same process, in which case
         # we'd like to use an 'inproc://' address.  Otherwise, fall back on
         # 'tcp://'.
-        print('Addresses: %s' % (adv['addresses']))
+        print('Addresses: %s'%(adv['addresses']))
         tcpaddrs = [a for a in adv['addresses'] if a.startswith('tcp')]
         inprocaddrs = [a for a in adv['addresses'] if a.startswith('inproc')]
         if adv['guid'] == GUID and inprocaddrs:
@@ -284,7 +280,7 @@ d.spin()
             addr = tcpaddrs[0]
         # Check for existing connection to this guy; we only want one.
         if [c for c in self.sub_connections if c['addr'] == addr]:
-            print('Not connecting again to %s' % (addr))
+            print('Not connecting again to %s'%(addr))
             return
         # Create a zmq socket
         sock = self.context.socket(zmq.SUB)
@@ -298,7 +294,7 @@ d.spin()
         self.sub_connections.append(conn)
         sock.connect(addr)
         self.poller.register(sock, zmq.POLLIN)
-        print('Connected to %s for %s' % (addr, adv['topic']))
+        print('Connected to %s for %s'%(addr, adv['topic']))
 
     def _advertisement_repeater(self):
         [self._advertise(p) for p in self.publishers]
@@ -336,7 +332,8 @@ d.spin()
                     # Get the message (assuming that we get it all in one read)
                     msg = sock.recv()
                     # Invoke all the callbacks registered for this topic.
-                    [s['cb'](topic, msg) for s in self.subscribers if s['topic'] == topic]
+                    [s['cb'](topic, msg) for s in self.subscribers if s['topic']
+== topic]
 
     def spin(self):
         """
@@ -349,8 +346,6 @@ d.spin()
 # https://github.com/ros/ros_comm/blob/hydro-devel/tools/rosgraph/src/rosgraph/network.py
 # cache for performance reasons
 _local_addrs = None
-
-
 def get_local_addresses(use_ipv6=False):
     """
     :returns: known local addresses. Not affected by ROS_IP/ROS_HOSTNAME,

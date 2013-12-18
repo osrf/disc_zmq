@@ -7,46 +7,43 @@
 namespace po = boost::program_options;
 
 //  ---------------------------------------------------------------------
-/// \brief Function is called everytime a topic update is received.
-void cb(const std::string &_topic, const std::string &_data)
+/// \brief Function is called everytime a service call is requested.
+int echo(const std::string &_topic, const std::string &_data, std::string &_rep)
 {
   assert(_topic != "");
   std::cout << "\nCallback [" << _topic << "][" << _data << "]" << std::endl;
+  _rep = _data;
+  return 0;
 }
 
 //  ---------------------------------------------------------------------
 /// \brief Print program usage.
 void PrintUsage(const po::options_description &_options)
 {
-  std::cout << "Usage: publisher [options] <topic> <data> <numMessages>\n"
+  std::cout << "Usage: replier [options] <topic>\n"
             << "Positional arguments:\n"
-            << "  <topic>               Topic to publish\n"
-            << "  <data>                Data\n"
-            << "  <numMessages>         Number of messages to send\n"
+            << "  <topic>               Topic to advertise\n"
             << _options << "\n";
 }
 
 //  ---------------------------------------------------------------------
 /// \brief Read the command line arguments.
-int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfSubscribe,
-  std::string &_master, std::string &_topic, std::string &_data,
-  int &_numMessages)
+int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfCall,
+  std::string &_master, std::string &_topic)
 {
   // Optional arguments
   po::options_description visibleDesc("Options");
   visibleDesc.add_options()
     ("help,h", "Produce help message")
     ("verbose,v", "Enable verbose mode")
-    ("self-subscribe,s", "Self-subscribe to the topic")
+    ("self-call,s", "Self-execute the advertised service call")
     ("master,m", po::value<std::string>(&_master)->default_value(""),
        "Set the master endpoint");
 
   // Positional arguments
   po::options_description hiddenDesc("Hidden options");
   hiddenDesc.add_options()
-    ("topic", po::value<std::string>(&_topic), "Topic to publish")
-    ("data", po::value<std::string>(&_data), "Data")
-    ("num", po::value<int>(&_numMessages), "Number of messages to send");
+    ("topic", po::value<std::string>(&_topic), "Topic to publish");
 
   // All the arguments
   po::options_description desc("Options");
@@ -54,7 +51,7 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfSubscribe,
 
   // One value per positional argument
   po::positional_options_description positionalDesc;
-  positionalDesc.add("topic", 1).add("data", 1).add("num", 1);
+  positionalDesc.add("topic", 1);
 
   po::variables_map vm;
 
@@ -70,8 +67,7 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfSubscribe,
     return -1;
   }
 
-  if (vm.count("help")  || !vm.count("topic") ||
-      !vm.count("data") || !vm.count("num"))
+  if (vm.count("help")  || !vm.count("topic"))
   {
     PrintUsage(visibleDesc);
     return -1;
@@ -84,9 +80,9 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfSubscribe,
   if (vm.count("master"))
     _master = vm["master"].as<std::string>();
 
-  _selfSubscribe = false;
-  if (vm.count("self-subscribe"))
-    _selfSubscribe = true;
+  _selfCall = false;
+  if (vm.count("self-call"))
+    _selfCall = true;
 
   return 0;
 }
@@ -95,39 +91,33 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfSubscribe,
 int main(int argc, char *argv[])
 {
   // Read the command line arguments
-  std::string master, topic, data;
-  int numMessages, rc;
-  bool verbose, selfSubscribe;
-  if (ReadArgs(argc, argv, verbose, selfSubscribe, master, topic, data,
-               numMessages) != 0)
+  std::string master, topic, data, response;
+  int rc;
+  bool verbose, selfCall;
+  if (ReadArgs(argc, argv, verbose, selfCall, master, topic) != 0)
     return -1;
 
   // Transport node
   Node node(master, verbose);
 
-  // Advertise a topic
-  rc = node.advertise(topic);
+  // Advertise a service call
+  rc = node.srv_advertise(topic, echo);
   if (rc != 0)
-    std::cout << "Advertise did not work" << std::endl;
+    std::cout << "srv_dvertise did not work" << std::endl;
 
-  if (selfSubscribe)
+  if (selfCall)
   {
-    // Self-subscribe to the topic
-    rc = node.subscribe(topic, cb);
-    if (rc != 0)
-      std::cout << "Subscribe did not work" << std::endl;
-  }
-
-  // Publish data
-  for (int i = 0; i < numMessages; ++i)
-  {
-    node.publish(topic, data);
-    node.SpinOnce();
+    // Request my own service call
+    data = "";
+    rc = node.srv_request(topic, data, response);
+    if (rc == 0)
+      std::cout << "Response: " << response << std::endl;
+    else
+      std::cout << "srv_request did not work" << std::endl;
   }
 
   // Zzzzzz Zzzzzz
-  std::cout << "\nPress any key to exit" << std::endl;
-  getchar();
+  node.Spin();
 
   return 0;
 }
