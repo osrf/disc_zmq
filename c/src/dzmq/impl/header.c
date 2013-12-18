@@ -1,11 +1,12 @@
 #include <string.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <assert.h>
 
 #include "header.h"
 #include "guid.h"
 
-size_t serialize_msg_header(unsigned char * buffer, dzmq_msg_header_t * header)
+size_t serialize_msg_header(uint8_t * buffer, dzmq_msg_header_t * header)
 {
     size_t index = 0;
     memcpy(buffer, &header->version, 2);
@@ -24,7 +25,7 @@ size_t serialize_msg_header(unsigned char * buffer, dzmq_msg_header_t * header)
     return index;
 }
 
-size_t deserialize_msg_header(dzmq_msg_header_t * header, unsigned char * buffer, size_t len)
+size_t deserialize_msg_header(dzmq_msg_header_t * header, uint8_t * buffer, size_t len)
 {
     size_t header_length = 0, available_bytes = len;
     assert (available_bytes > 2);
@@ -52,4 +53,16 @@ size_t deserialize_msg_header(dzmq_msg_header_t * header, unsigned char * buffer
     memcpy(&header->flags, buffer + header_length, 16);
     header_length += 16;
     return header_length;
+}
+
+void dzmq_print_header(dzmq_msg_header_t * header)
+{
+    char guid_str[GUID_STR_LEN];
+    dzmq_guid_to_str(header->guid, guid_str, GUID_STR_LEN);
+    printf("---------------------------------\n");
+    printf("header.version: 0x%02x\n", header->version);
+    printf("header.guid:    %s\n", guid_str);
+    printf("header.topic:   %s\n", header->topic);
+    printf("header.type:    0x%02x\n", header->type);
+    printf("---------------------------------\n");
 }

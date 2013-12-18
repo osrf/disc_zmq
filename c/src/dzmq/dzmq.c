@@ -30,6 +30,7 @@ char tcp_address[DZMQ_MAX_ADDR_LENGTH];
 
 void * zmq_context;
 void * zmq_publish_sock;
+void * zmq_subscribe_sock;
 zmq_pollitem_t poll_items[DZMQ_MAX_POLL_ITEMS];
 size_t poll_items_count = 0;
 
@@ -41,7 +42,7 @@ int register_file_descriptor(int fd)
 {
     if (poll_items_count >= DZMQ_MAX_POLL_ITEMS)
     {
-        perror("Too many devices to poll");
+        fprintf(stderr, "Too many devices to poll\n");
         return 0;
     }
     poll_items[poll_items_count].socket = 0;
@@ -55,7 +56,7 @@ int register_socket(void * socket)
 {
     if (poll_items_count >= DZMQ_MAX_POLL_ITEMS)
     {
-        perror("Too many devices to poll");
+        fprintf(stderr, "Too many devices to poll\n");
         return 0;
     }
     poll_items[poll_items_count].socket = socket;
@@ -130,28 +131,39 @@ int dzmq_init()
     /* Bind to receive address */
     if (bind(bcast_fd, (struct sockaddr *) &rcv_addr, sizeof(rcv_addr)) < 0)
     {
-        perror("Error binding socket");
+        perror("Error binding broadcast socket");
         return 0;
     }
     /* Add the bcast socket to the zmq poller */
     register_file_descriptor(bcast_fd);
-    /* Setup publisher zmq socket */
+    /* Setup zmq context */
     zmq_context = zmq_ctx_new();
+    /* Setup publisher zmq socket */
     zmq_publish_sock = zmq_socket(zmq_context, ZMQ_PUB);
+    /* Bind publisher to tcp transport */
     char publish_addr[DZMQ_MAX_ADDR_LENGTH];
     sprintf(publish_addr, "tcp://%s:*", ip_address);
     if (0 > zmq_bind(zmq_publish_sock, publish_addr))
     {
-        perror("Error binding zmq socket");
+        perror("Error binding zmq socket to tcp");
         return 0;
     }
     size_t size_of_tcp_address = sizeof(tcp_address);
+    memset(tcp_address, 0, size_of_tcp_address);
     if (0 > zmq_getsockopt(zmq_publish_sock, ZMQ_LAST_ENDPOINT, tcp_address, &size_of_tcp_address))
     {
         perror("Error getting endpoint address of publisher socket");
         return 0;
     }
-    register_socket(zmq_context);
+    /* Bind publisher to inproc transport */
+    if (0 > zmq_bind(zmq_publish_sock, "inproc://topics"))
+    {
+        perror("Error binding zmq socket to inproc");
+        return 0;
+    }
+    /* Setup subscriber socket */
+    zmq_subscribe_sock = zmq_socket(zmq_context, ZMQ_SUB);
+    register_socket(zmq_subscribe_sock);
     /* Report the state of the node */
     char guid_str[GUID_STR_LEN];
     dzmq_guid_to_str(GUID, guid_str, GUID_STR_LEN);
@@ -193,11 +205,17 @@ int dzmq_advertise(const char * topic_name)
 {
     if (!init_called)
     {
-        perror("(dzmq_advertise) dzmq_init must be called first");
+        fprintf(stderr, "(dzmq_advertise) dzmq_init must be called first\n");
         return 0;
     }
+    if (dzmq_topic_in_list(&published_topics, topic_name))
+    {
+        fprintf(stderr, "Cannot advertise the topic '%s', which has already been advertised\n", topic_name);
+        return 0;
+    }
+    printf("Advertising topic '%s'\n", topic_name);
     /* Add topic to publisher list */
-    if (!dzmq_topic_list_append(&published_topics, topic_name))
+    if (!dzmq_topic_list_append(&published_topics, topic_name, 0))
     {
         return 0;
     }
@@ -223,15 +241,21 @@ int send_sub(const char * topic_name)
     return 1;
 }
 
-int dzmq_subscribe(const char * topic_name, dzmq_callback_t callback)
+int dzmq_subscribe(const char * topic_name, dzmq_callback_t * callback)
 {
     if (!init_called)
     {
-        perror("(dzmq_subscribe) dzmq_init must be called first");
+        fprintf(stderr, "(dzmq_subscribe) dzmq_init must be called first\n");
         return 0;
     }
+    if (dzmq_topic_in_list(&subscribed_topics, topic_name))
+    {
+        fprintf(stderr, "Cannot subscribe to the topic '%s', which has already been subscribed\n", topic_name);
+        return 0;
+    }
+    printf("Subscribing to topic '%s'\n", topic_name);
     /* Add topic to subscriber list */
-    if (!dzmq_topic_list_append(&subscribed_topics, topic_name))
+    if (!dzmq_topic_list_append(&subscribed_topics, topic_name, callback))
     {
         return 0;
     }
@@ -242,9 +266,32 @@ int dzmq_publish(const char * topic_name, const uint8_t * msg, size_t len)
 {
     if (!init_called)
     {
-        perror("(dzmq_publish) dzmq_init must be called first");
+        fprintf(stderr, "(dzmq_publish) dzmq_init must be called first\n");
         return 0;
     }
+    if (!dzmq_topic_in_list(&published_topics, topic_name))
+    {
+        fprintf(stderr, "Cannot publish to topic '%s' which is unadvertised\n", topic_name);
+        return 0;
+    }
+    /* Construct a header for the message */
+    dzmq_msg_header_t header;
+    header.version = 0x01;
+    memcpy(header.guid, GUID, GUID_LEN);
+    strcpy(header.topic, topic_name);
+    header.type = DZMQ_OP_PUB;
+    memset(header.flags, 0, DZMQ_FLAGS_LENGTH);
+    uint8_t buffer[DZMQ_UDP_MAX_SIZE];
+    size_t header_len = serialize_msg_header(buffer, &header);
+    zmq_msg_t zmq_msg;
+    /* Send the topic name in a msg */
+    size_t total_size = strlen(topic_name) + header_len + len;
+    assert(0 == zmq_msg_init_size(&zmq_msg, total_size));
+    memcpy(zmq_msg_data(&zmq_msg), topic_name, strlen(topic_name));
+    memcpy((uint8_t *) zmq_msg_data(&zmq_msg) + strlen(topic_name), buffer, header_len);
+    memcpy((uint8_t *) zmq_msg_data(&zmq_msg) + strlen(topic_name) + header_len, msg, len);
+    assert(total_size == zmq_sendmsg(zmq_publish_sock, &zmq_msg, ZMQ_MORE));
+    zmq_msg_close(&zmq_msg);
     return 1;
 }
 
@@ -265,11 +312,21 @@ int handle_bcast_msg(uint8_t * buffer, int length)
         if (0 == strncmp("tcp://", adv_msg.addr, 6))
         {
             printf("I should connect to tcp address: %s\n", adv_msg.addr);
+            if (0 != zmq_connect(zmq_subscribe_sock, adv_msg.addr))
+            {
+                fprintf(stderr, "Error connecting to addr '%s'\n", adv_msg.addr);
+                return 0;
+            }
+            if (0 != zmq_setsockopt(zmq_subscribe_sock, ZMQ_SUBSCRIBE, header.topic, strlen(header.topic)))
+            // if (0 != zmq_setsockopt(zmq_subscribe_sock, ZMQ_SUBSCRIBE, "", 0))
+            {
+                fprintf(stderr, "Error subscribing to topic '%s'\n", header.topic);
+            }
             return 1;
         }
         else
         {
-            printf("Unkown protocol type for address: %s\n", adv_msg.addr);
+            fprintf(stderr, "Unkown protocol type for address: %s\n", adv_msg.addr);
             return 0;
         }
     }
@@ -278,19 +335,25 @@ int handle_bcast_msg(uint8_t * buffer, int length)
         if (0 != dzmq_topic_in_list(&published_topics, header.topic))
         {
             /* Resend the ADV message */
+            // printf("Resending ADV for topic '%s'\n", header.topic);
             return send_adv(header.topic);
         }
     }
     else
     {
-        printf("Unknown type: %i\n", header.type);
+        fprintf(stderr, "Unknown type: %i\n", header.type);
     }
     return 1;
 }
 
 int dzmq_spin_once(long timeout)
 {
-    int rc = zmq_poll(poll_items, poll_items_count - 1, timeout);
+    if (!init_called)
+    {
+        fprintf(stderr, "(dzmq_spin_once) dzmq_init must be called first\n");
+        return 0;
+    }
+    int rc = zmq_poll(poll_items, poll_items_count, timeout);
     if (rc < 0)
     {
         switch (errno)
@@ -315,7 +378,7 @@ int dzmq_spin_once(long timeout)
         return 1;
     }
 
-    if (poll_items[0].revents & ZMQ_POLLIN)
+    if (0 < poll_items_count && poll_items[0].revents & ZMQ_POLLIN)
     {
         uint8_t buffer[DZMQ_UDP_MAX_SIZE];
         socklen_t len_rcv_addr = sizeof(rcv_addr);
@@ -325,7 +388,41 @@ int dzmq_spin_once(long timeout)
             perror("Error in recvfrom on broadcast socket");
             return 0;
         }
-        return handle_bcast_msg(buffer, ret);
+        if (!handle_bcast_msg(buffer, ret))
+        {
+            return 0;
+        }
+    }
+    if (poll_items[1].revents & ZMQ_POLLIN)
+    {
+        /* Get zmq_msg */
+        zmq_msg_t zmq_msg;
+        zmq_msg_init(&zmq_msg);
+        assert(-1 != zmq_recvmsg(zmq_subscribe_sock, &zmq_msg, 0));
+        /* Extract topic */
+        char topic[DZMQ_MAX_TOPIC_LENGTH];
+        size_t topic_len = strlen((char *) zmq_msg_data(&zmq_msg));
+        strncpy(topic, (char *) zmq_msg_data(&zmq_msg), topic_len);
+        topic[topic_len - 1] = 0;
+        /* Extract header */
+        dzmq_msg_header_t header;
+        uint8_t * header_offset = (uint8_t *) zmq_msg_data(&zmq_msg) + topic_len - 1;
+        size_t header_len = deserialize_msg_header(&header, header_offset, sizeof(header));
+        if (header.type == DZMQ_OP_PUB)
+        {
+            /* Find subscriber */
+            dzmq_topic_t * subscriber = dzmq_topic_in_list(&subscribed_topics, topic);
+            if (!subscriber)
+            {
+                fprintf(stderr, "Could not find subscriber for topic '%s'\n", topic);
+                return 0;
+            }
+            /* Extract data */
+            size_t data_len = zmq_msg_size(&zmq_msg) - (topic_len - 1) - header_len;
+            uint8_t * data = (uint8_t *) malloc(data_len);
+            memcpy(data, (uint8_t *) zmq_msg_data(&zmq_msg) + (topic_len - 1) + header_len, data_len);
+            subscriber->callback(topic, data, data_len);
+        }
     }
 
     return 1;

@@ -24,6 +24,7 @@ size_t deserialize_adv_msg(dzmq_adv_msg_t * adv_msg, uint8_t * buffer, size_t le
     available_bytes -= 1;
     assert (available_bytes >= addr_len);
     memcpy(&adv_msg->addr, buffer + msg_len, addr_len);
+    adv_msg->addr[addr_len] = 0;
     msg_len += addr_len;
     return msg_len;
 }

@@ -14,25 +14,12 @@
  * limitations under the License.
  */
 
-#ifndef DZMQ__DZMQ_H
-#define DZMQ__DZMQ_H
+#ifndef DZMQ__CALLBACK_H
+#define DZMQ__CALLBACK_H
 
-#include <stddef.h>
 #include <stdint.h>
-#include <uuid/uuid.h>
+#include <stddef.h>
 
-#include "impl/callback.h"
+typedef void (dzmq_callback_t)(const char * topic_name, const uint8_t * msg, size_t len);
 
-int dzmq_init();
-
-int dzmq_advertise(const char * topic_name);
-
-int dzmq_subscribe(const char * topic_name, dzmq_callback_t * callback);
-
-int dzmq_publish(const char * topic_name, const uint8_t * msg, size_t len);
-
-int dzmq_spin_once(long timeout_ms);
-
-int dzmq_spin();
-
-#endif /* DZMQ__DZMQ_H */
+#endif /* DZMQ__CALLBACK_H */

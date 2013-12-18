@@ -31,8 +31,10 @@ typedef struct {
     uint8_t flags[DZMQ_FLAGS_LENGTH];
 } dzmq_msg_header_t;
 
-size_t serialize_msg_header(unsigned char * buffer, dzmq_msg_header_t * header);
+size_t serialize_msg_header(uint8_t * buffer, dzmq_msg_header_t * header);
 
-size_t deserialize_msg_header(dzmq_msg_header_t * header, unsigned char * buffer, size_t len);
+size_t deserialize_msg_header(dzmq_msg_header_t * header, uint8_t * buffer, size_t len);
+
+void dzmq_print_header(dzmq_msg_header_t * header);
 
 #endif /* DZMQ__HEADER_H */

@@ -20,7 +20,7 @@
 #include <uuid/uuid.h>
 
 #define GUID_LEN sizeof(uuid_t)
-#define GUID_STR_LEN (sizeof(GUID) * 2) + 4 + 1
+#define GUID_STR_LEN (sizeof(uuid_t) * 2) + 4 + 1
 
 void dzmq_guid_to_str(uuid_t guid, char * guid_str, int guid_str_len);
 

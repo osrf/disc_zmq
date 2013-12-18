@@ -23,6 +23,8 @@
 /* Constants */
 #define DZMQ_OP_ADV 0x01
 #define DZMQ_OP_SUB 0x02
+#define DZMQ_OP_PUB 0x03
+
 #define DZMQ_UDP_MAX_SIZE 512
 #define DZMQ_ADV_REPEAT_PERIOD 1.0
 #define DZMQ_MAX_TOPIC_LENGTH 193 + 1

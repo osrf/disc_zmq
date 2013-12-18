@@ -4,7 +4,7 @@
 
 #include "topic.h"
 
-int dzmq_topic_list_append(dzmq_topic_list_t * topic_list, const char * topic)
+int dzmq_topic_list_append(dzmq_topic_list_t * topic_list, const char * topic, dzmq_callback_t * callback)
 {
     dzmq_topic_t * new_topic = (struct dzmq_topic_t *) malloc(sizeof(struct dzmq_topic_t));
     if (0 == new_topic)
@@ -14,10 +14,12 @@ int dzmq_topic_list_append(dzmq_topic_list_t * topic_list, const char * topic)
     }
     new_topic->next = 0;
     strncpy(new_topic->name, topic, DZMQ_MAX_TOPIC_LENGTH);
-    if (0 == topic_list->last)
+    new_topic->callback = callback;
+    if (0 == topic_list->last && 0 == topic_list->first)
     {
         new_topic->prev = 0;
         topic_list->last = new_topic;
+        topic_list->first = new_topic;
     }
     else
     {

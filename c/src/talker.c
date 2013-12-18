@@ -9,11 +9,7 @@ int main(int argc, const char * argv[])
     if (!dzmq_init()) return 1;
 
     /* Determine the topic name */
-    const char * topic_name;
-    if (argc > 2)
-        topic_name = argv[2];
-    else
-        topic_name = "foo";
+    const char * topic_name = (argc > 1) ? argv[1] : "foo";
 
     /* Advertise the topic */
     if (!dzmq_advertise(topic_name)) return 1;
