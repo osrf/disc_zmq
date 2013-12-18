@@ -22,7 +22,7 @@
 
 typedef struct dzmq_topic_t {
     char name[DZMQ_MAX_TOPIC_LENGTH];
-    dzmq_callback_t * callback;
+    dzmq_msg_callback_t * callback;
     struct dzmq_topic_t * next;
     struct dzmq_topic_t * prev;
 } dzmq_topic_t;
@@ -32,7 +32,7 @@ typedef struct {
     struct dzmq_topic_t * last;
 } dzmq_topic_list_t;
 
-int dzmq_topic_list_append(dzmq_topic_list_t * topic_list, const char * topic, dzmq_callback_t * callback);
+int dzmq_topic_list_append(dzmq_topic_list_t * topic_list, const char * topic, dzmq_msg_callback_t * callback);
 
 int dzmq_topic_list_remove(dzmq_topic_t * topic);
 

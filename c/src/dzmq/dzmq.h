@@ -27,9 +27,13 @@ int dzmq_init();
 
 int dzmq_advertise(const char * topic_name);
 
-int dzmq_subscribe(const char * topic_name, dzmq_callback_t * callback);
+int dzmq_subscribe(const char * topic_name, dzmq_msg_callback_t * callback);
 
 int dzmq_publish(const char * topic_name, const uint8_t * msg, size_t len);
+
+int dzmq_timer(dzmq_timer_callback_t * callback, long period_ms);
+
+int dzmq_clear_timer();
 
 int dzmq_spin_once(long timeout_ms);
 

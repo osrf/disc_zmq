@@ -19,6 +19,7 @@
 
 /* Defaults and overrides */
 #define DZMQ_DISC_PORT 11312
+#define DZMQ_INPROC_ADDR "inproc://topics"
 
 /* Constants */
 #define DZMQ_OP_ADV 0x01

@@ -4,7 +4,7 @@
 
 #include "topic.h"
 
-int dzmq_topic_list_append(dzmq_topic_list_t * topic_list, const char * topic, dzmq_callback_t * callback)
+int dzmq_topic_list_append(dzmq_topic_list_t * topic_list, const char * topic, dzmq_msg_callback_t * callback)
 {
     dzmq_topic_t * new_topic = (struct dzmq_topic_t *) malloc(sizeof(struct dzmq_topic_t));
     if (0 == new_topic)

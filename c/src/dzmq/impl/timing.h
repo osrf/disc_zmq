@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-#ifndef DZMQ__CALLBACK_H
-#define DZMQ__CALLBACK_H
+#ifndef DZMQ__TIMING_H
+#define DZMQ__TIMING_H
 
-#include <stdint.h>
-#include <stddef.h>
+#include <time.h>
 
-typedef void (dzmq_msg_callback_t)(const char * topic_name, const uint8_t * msg, size_t len);
-typedef void (dzmq_timer_callback_t)();
+void dzmq_get_time_now(struct timespec * time);
 
-#endif /* DZMQ__CALLBACK_H */
+long dzmq_time_till(struct timespec * last_time, long timer_period);
+
+#endif /* DZMQ__TIMING_H */

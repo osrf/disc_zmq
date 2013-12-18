@@ -14,6 +14,7 @@
 #include "impl/guid.h"
 #include "impl/ip.h"
 #include "impl/topic.h"
+#include "impl/timing.h"
 #include "impl/config.h"
 
 uuid_t GUID = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -36,6 +37,10 @@ size_t poll_items_count = 0;
 
 dzmq_topic_list_t published_topics;
 dzmq_topic_list_t subscribed_topics;
+
+dzmq_timer_callback_t * timer_callback = 0;
+long timer_period = 0;
+struct timespec last_timer = {0, 0};
 
 
 int register_file_descriptor(int fd)
@@ -156,13 +161,14 @@ int dzmq_init()
         return 0;
     }
     /* Bind publisher to inproc transport */
-    if (0 > zmq_bind(zmq_publish_sock, "inproc://topics"))
+    if (0 > zmq_bind(zmq_publish_sock, DZMQ_INPROC_ADDR))
     {
         perror("Error binding zmq socket to inproc");
         return 0;
     }
     /* Setup subscriber socket */
     zmq_subscribe_sock = zmq_socket(zmq_context, ZMQ_SUB);
+    zmq_connect(zmq_subscribe_sock, DZMQ_INPROC_ADDR);
     register_socket(zmq_subscribe_sock);
     /* Report the state of the node */
     char guid_str[GUID_STR_LEN];
@@ -241,7 +247,7 @@ int send_sub(const char * topic_name)
     return 1;
 }
 
-int dzmq_subscribe(const char * topic_name, dzmq_callback_t * callback)
+int dzmq_subscribe(const char * topic_name, dzmq_msg_callback_t * callback)
 {
     if (!init_called)
     {
@@ -258,6 +264,11 @@ int dzmq_subscribe(const char * topic_name, dzmq_callback_t * callback)
     if (!dzmq_topic_list_append(&subscribed_topics, topic_name, callback))
     {
         return 0;
+    }
+    /* Add subscription filter to inproc */
+    if (0 != zmq_setsockopt(zmq_subscribe_sock, ZMQ_SUBSCRIBE, topic_name, strlen(topic_name)))
+    {
+        fprintf(stderr, "Error subscribing to topic '%s'\n", topic_name);
     }
     return send_sub(topic_name);
 }
@@ -295,6 +306,28 @@ int dzmq_publish(const char * topic_name, const uint8_t * msg, size_t len)
     return 1;
 }
 
+int dzmq_timer(dzmq_timer_callback_t * callback, long timer_period_ms)
+{
+    if (timer_period_ms < 0)
+    {
+        fprintf(stderr, "Cannot set a timer with period less than 0");
+        return 0;
+    }
+    if (callback != 0 && timer_period_ms == 0)
+    {
+        fprintf(stderr, "Cannot set a timer with period 0");
+        return 0;
+    }
+    timer_callback = callback;
+    timer_period = timer_period_ms;
+    return 1;
+}
+
+int dzmq_clear_timer()
+{
+    return dzmq_timer(0, 0);
+}
+
 int handle_bcast_msg(uint8_t * buffer, int length)
 {
     dzmq_msg_header_t header;
@@ -316,11 +349,6 @@ int handle_bcast_msg(uint8_t * buffer, int length)
             {
                 fprintf(stderr, "Error connecting to addr '%s'\n", adv_msg.addr);
                 return 0;
-            }
-            if (0 != zmq_setsockopt(zmq_subscribe_sock, ZMQ_SUBSCRIBE, header.topic, strlen(header.topic)))
-            // if (0 != zmq_setsockopt(zmq_subscribe_sock, ZMQ_SUBSCRIBE, "", 0))
-            {
-                fprintf(stderr, "Error subscribing to topic '%s'\n", header.topic);
             }
             return 1;
         }
@@ -353,7 +381,23 @@ int dzmq_spin_once(long timeout)
         fprintf(stderr, "(dzmq_spin_once) dzmq_init must be called first\n");
         return 0;
     }
-    int rc = zmq_poll(poll_items, poll_items_count, timeout);
+    /* If there is a timer set */
+    long time_till_timer = -1;
+    if (0 != timer_callback)
+    {
+        /* Determine the time until the next firing */
+        time_till_timer = dzmq_time_till(&last_timer, timer_period);
+        /* If we have no time left, run the callback now */
+        if (time_till_timer <= 0)
+        {
+            dzmq_get_time_now(&last_timer);
+            timer_callback();
+            return 1;
+        }
+    }
+    /* Poll for either the given timeout, or the time until the next timer, which ever is shorter */
+    long zmq_timeout = (-1 != time_till_timer && time_till_timer < timeout) ? time_till_timer : timeout;
+    int rc = zmq_poll(poll_items, poll_items_count, zmq_timeout);
     if (rc < 0)
     {
         switch (errno)
@@ -372,12 +416,13 @@ int dzmq_spin_once(long timeout)
         }
     }
 
-    /* timeout */
+    /* Timeout */
     if (rc == 0)
     {
         return 1;
     }
 
+    /* Check for incoming broadcast messages */
     if (0 < poll_items_count && poll_items[0].revents & ZMQ_POLLIN)
     {
         uint8_t buffer[DZMQ_UDP_MAX_SIZE];
@@ -388,11 +433,9 @@ int dzmq_spin_once(long timeout)
             perror("Error in recvfrom on broadcast socket");
             return 0;
         }
-        if (!handle_bcast_msg(buffer, ret))
-        {
-            return 0;
-        }
+        return handle_bcast_msg(buffer, ret);
     }
+    /* Check for incoming ZMQ messages */
     if (poll_items[1].revents & ZMQ_POLLIN)
     {
         /* Get zmq_msg */
@@ -423,6 +466,7 @@ int dzmq_spin_once(long timeout)
             memcpy(data, (uint8_t *) zmq_msg_data(&zmq_msg) + (topic_len - 1) + header_len, data_len);
             subscriber->callback(topic, data, data_len);
         }
+        return 1;
     }
 
     return 1;

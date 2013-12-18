@@ -5,6 +5,11 @@
 
 const char * topic_name;
 
+void callback(const char * topic_name, const uint8_t * msg, size_t len)
+{
+    printf("Received message (%lu): %s\n", len, (char *) msg);
+}
+
 void publish_callback()
 {
     char msg[4] = "bar";
@@ -19,6 +24,9 @@ int main(int argc, const char * argv[])
     /* Determine the topic name */
     topic_name = (argc > 1) ? argv[1] : "foo";
 
+    /* Subscribe */
+    if (!dzmq_subscribe(topic_name, callback)) return 1;
+
     /* Advertise the topic */
     if (!dzmq_advertise(topic_name)) return 1;
 
@@ -27,5 +35,6 @@ int main(int argc, const char * argv[])
 
     /* Spin */
     if(!dzmq_spin()) return 1;
+
     return 0;
 }
