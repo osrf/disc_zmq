@@ -17,8 +17,6 @@
 #include "impl/timing.h"
 #include "impl/config.h"
 
-#define DZMQ_USE_MULTIPART 1
-
 uuid_t GUID = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 int init_called = 0;
@@ -287,7 +285,6 @@ int dzmq_publish(const char * topic_name, const uint8_t * msg, size_t len)
         fprintf(stderr, "Cannot publish to topic '%s' which is unadvertised\n", topic_name);
         return 0;
     }
-#if DZMQ_USE_MULTIPART
     /* Construct a header for the message */
     dzmq_msg_header_t header;
     header.version = 0x01;
@@ -316,27 +313,6 @@ int dzmq_publish(const char * topic_name, const uint8_t * msg, size_t len)
     assert(len == zmq_msg_send(&data_msg, zmq_publish_sock, 0));
     zmq_msg_close(&data_msg);
     return 1;
-#else
-    /* Construct a header for the message */
-    dzmq_msg_header_t header;
-    header.version = 0x01;
-    memcpy(header.guid, GUID, GUID_LEN);
-    strcpy(header.topic, topic_name);
-    header.type = DZMQ_OP_PUB;
-    memset(header.flags, 0, DZMQ_FLAGS_LENGTH);
-    uint8_t buffer[DZMQ_UDP_MAX_SIZE];
-    size_t header_len = serialize_msg_header(buffer, &header);
-    /* Send the msg */
-    zmq_msg_t zmq_msg;
-    size_t total_size = strlen(topic_name) + header_len + len;
-    assert(0 == zmq_msg_init_size(&zmq_msg, total_size));
-    memcpy(zmq_msg_data(&zmq_msg), topic_name, strlen(topic_name));
-    memcpy((uint8_t *) zmq_msg_data(&zmq_msg) + strlen(topic_name), buffer, header_len);
-    memcpy((uint8_t *) zmq_msg_data(&zmq_msg) + strlen(topic_name) + header_len, msg, len);
-    assert(total_size == zmq_sendmsg(zmq_publish_sock, &zmq_msg, ZMQ_MORE));
-    zmq_msg_close(&zmq_msg);
-    return 1;
-#endif
 }
 
 int dzmq_timer(dzmq_timer_callback_t * callback, long timer_period_ms)
@@ -473,8 +449,6 @@ int dzmq_spin_once(long timeout)
     {
         char topic[DZMQ_MAX_TOPIC_LENGTH];
         dzmq_msg_header_t header;
-#if DZMQ_USE_MULTIPART
-// #if 0
         /* Get the topic msg */
         zmq_msg_t topic_msg;
         assert(0 == zmq_msg_init(&topic_msg));
@@ -490,19 +464,6 @@ int dzmq_spin_once(long timeout)
         deserialize_msg_header(&header, (uint8_t *) zmq_msg_data(&header_msg), zmq_msg_size(&header_msg));
         int more = zmq_msg_more(&header_msg);
         zmq_msg_close(&header_msg);
-#else
-        /* Get zmq_msg */
-        zmq_msg_t zmq_msg;
-        zmq_msg_init(&zmq_msg);
-        assert(-1 != zmq_recvmsg(zmq_subscribe_sock, &zmq_msg, 0));
-        /* Extract topic */
-        size_t topic_len = strlen((char *) zmq_msg_data(&zmq_msg));
-        strncpy(topic, (char *) zmq_msg_data(&zmq_msg), topic_len);
-        topic[topic_len - 1] = 0;
-        /* Extract header */
-        uint8_t * header_offset = (uint8_t *) zmq_msg_data(&zmq_msg) + topic_len - 1;
-        size_t header_len = deserialize_msg_header(&header, header_offset, sizeof(header));
-#endif
         if (header.type == DZMQ_OP_PUB)
         {
             /* Find subscriber */
@@ -512,7 +473,6 @@ int dzmq_spin_once(long timeout)
                 fprintf(stderr, "Could not find subscriber for topic '%s'\n", topic);
                 return 0;
             }
-#if DZMQ_USE_MULTIPART
             /* Receive final data msg */
             assert(more);
             zmq_msg_t data_msg;
@@ -520,12 +480,6 @@ int dzmq_spin_once(long timeout)
             assert(-1 != zmq_msg_recv(&data_msg, zmq_subscribe_sock, 0));
             size_t data_len = zmq_msg_size(&data_msg);
             uint8_t * data = (uint8_t *) zmq_msg_data(&data_msg);
-#else
-            /* Extract data */
-            size_t data_len = zmq_msg_size(&zmq_msg) - (topic_len - 1) - header_len;
-            uint8_t * data = (uint8_t *) malloc(data_len);
-            memcpy(data, (uint8_t *) zmq_msg_data(&zmq_msg) + (topic_len - 1) + header_len, data_len);
-#endif
             subscriber->callback(topic, data, data_len);
         }
         return 1;
