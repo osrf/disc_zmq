@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -13,7 +14,10 @@ void callback(const char * topic_name, const uint8_t * msg, size_t len)
 void publish_callback()
 {
     char msg[4] = "bar";
-    dzmq_publish(topic_name, (uint8_t *) msg, strlen(msg));
+    if (!dzmq_publish(topic_name, (uint8_t *) msg, 4))
+    {
+        exit(1);
+    }
 }
 
 int main(int argc, const char * argv[])

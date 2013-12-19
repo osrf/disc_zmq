@@ -8,7 +8,7 @@ const char * topic_name;
 void publish_callback()
 {
     char msg[4] = "bar";
-    dzmq_publish(topic_name, (uint8_t *) msg, strlen(msg));
+    dzmq_publish(topic_name, (uint8_t *) msg, 4);
 }
 
 int main(int argc, const char * argv[])
