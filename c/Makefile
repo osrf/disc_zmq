@@ -1,6 +1,6 @@
 CC = /usr/bin/gcc
 
-SRCS = src/dzmq/dzmq.c src/dzmq/impl/adv_msg.c src/dzmq/impl/guid.c src/dzmq/impl/header.c src/dzmq/impl/ip.c src/dzmq/impl/topic.c src/dzmq/impl/timing.c
+SRCS = src/dzmq/dzmq.c src/dzmq/impl/adv_msg.c src/dzmq/impl/guid.c src/dzmq/impl/header.c src/dzmq/impl/ip.c src/dzmq/impl/topic.c src/dzmq/impl/timing.c src/dzmq/impl/connection.c
 LIBRARIES = -lzmq
 
 all:

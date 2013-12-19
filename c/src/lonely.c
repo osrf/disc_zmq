@@ -5,6 +5,7 @@
 #include "dzmq/dzmq.h"
 
 const char * topic_name;
+size_t seq = 0;
 
 void callback(const char * topic_name, const uint8_t * msg, size_t len)
 {
@@ -13,11 +14,9 @@ void callback(const char * topic_name, const uint8_t * msg, size_t len)
 
 void publish_callback()
 {
-    char msg[4] = "bar";
-    if (!dzmq_publish(topic_name, (uint8_t *) msg, 4))
-    {
-        exit(1);
-    }
+    char msg[255];
+    sprintf(msg, "Hello World: %lu", seq++);
+    dzmq_publish(topic_name, (uint8_t *) msg, strlen(msg) + 1);
 }
 
 int main(int argc, const char * argv[])

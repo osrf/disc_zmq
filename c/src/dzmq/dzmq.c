@@ -2,6 +2,8 @@
 #include <string.h>
 #include <assert.h>
 
+#include <pthread.h>
+
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <fcntl.h>
@@ -15,6 +17,7 @@
 #include "impl/ip.h"
 #include "impl/topic.h"
 #include "impl/timing.h"
+#include "impl/connection.h"
 #include "impl/config.h"
 
 uuid_t GUID = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -37,11 +40,11 @@ size_t poll_items_count = 0;
 
 dzmq_topic_list_t published_topics;
 dzmq_topic_list_t subscribed_topics;
+dzmq_connection_list_t connections;
 
 dzmq_timer_callback_t * timer_callback = 0;
 long timer_period = 0;
 struct timespec last_timer = {0, 0};
-
 
 int register_file_descriptor(int fd)
 {
@@ -329,6 +332,7 @@ int dzmq_timer(dzmq_timer_callback_t * callback, long timer_period_ms)
     }
     timer_callback = callback;
     timer_period = timer_period_ms;
+    dzmq_get_time_now(&last_timer);
     return 1;
 }
 
@@ -354,9 +358,19 @@ int handle_bcast_msg(uint8_t * buffer, int length)
         if (0 == strncmp("tcp://", adv_msg.addr, 6))
         {
             printf("I should connect to tcp address: %s\n", adv_msg.addr);
+            if (0 != dzmq_addr_in_list(&connections, adv_msg.addr))
+            {
+                printf("Skipping connection to address '%s', because it has already been made\n", adv_msg.addr);
+                return 1;
+            }
             if (0 != zmq_connect(zmq_subscribe_sock, adv_msg.addr))
             {
                 fprintf(stderr, "Error connecting to addr '%s'\n", adv_msg.addr);
+                return 0;
+            }
+            if (!dzmq_connection_list_append(&connections, -1, adv_msg.addr))
+            {
+                fprintf(stderr, "Failed to add connection to list\n");
                 return 0;
             }
             return 1;
@@ -428,6 +442,7 @@ int dzmq_spin_once(long timeout)
     /* Timeout */
     if (rc == 0)
     {
+        /* TODO: check timer again */
         return 1;
     }
 

@@ -4,11 +4,14 @@
 #include "dzmq/dzmq.h"
 
 const char * topic_name;
+size_t seq = 0;
 
 void publish_callback()
 {
-    char msg[4] = "bar";
-    dzmq_publish(topic_name, (uint8_t *) msg, 4);
+    char msg[255];
+    sprintf(msg, "Hello World: %lu", seq++);
+    printf("Sending '%s'\n", msg);
+    dzmq_publish(topic_name, (uint8_t *) msg, strlen(msg) + 1);
 }
 
 int main(int argc, const char * argv[])
@@ -23,9 +26,10 @@ int main(int argc, const char * argv[])
     if (!dzmq_advertise(topic_name)) return 1;
 
     /* Setup timer for publish once a second */
-    if (!dzmq_timer(publish_callback, 1000)) return 1;
+    if (!dzmq_timer(publish_callback, 500)) return 1;
 
     /* Spin */
     if(!dzmq_spin()) return 1;
+
     return 0;
 }

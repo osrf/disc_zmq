@@ -32,8 +32,14 @@ int dzmq_topic_list_append(dzmq_topic_list_t * topic_list, const char * topic, d
 
 int dzmq_topic_list_remove(dzmq_topic_t * topic)
 {
-    topic->next->prev = topic->prev;
-    topic->prev->next = topic->next;
+    if (topic->next)
+    {
+        topic->next->prev = topic->prev;
+    }
+    if (topic->prev)
+    {
+        topic->prev->next = topic->next;
+    }
     free(topic);
     return 1;
 }
