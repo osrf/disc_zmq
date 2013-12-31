@@ -102,6 +102,7 @@ d.spin()
         self.bcast_recv = socket.socket(socket.AF_INET, # Internet
                                         socket.SOCK_DGRAM) # UDP
         self.bcast_recv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        import platform
         if platform.system() in ['Darwin']:
             self.bcast_recv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         self.bcast_recv.bind((self.bcast_host, self.bcast_port))
@@ -115,14 +116,12 @@ d.spin()
         self.subscribers = []
         self.sub_connections = []
         self.poller = zmq.Poller()
-        self.poller.register(self.bcast_recv, zmq.POLLIN)
-        self.poller.register(self.pub_socket, zmq.POLLIN)
         # TODO: figure out what happens with multiple classes
         self.adv_timer = None
         self._advertisement_repeater()
         signal.signal(signal.SIGINT, self._sighandler)
 
-        # Set up the one pub socket that we'll use
+        # Set up the one pub and one sub socket that we'll use
         self.pub_socket = self.context.socket(zmq.PUB)
         self.pub_socket_addrs = []
         tcp_addr = 'tcp://%s'%(self.ipaddr)
@@ -134,6 +133,10 @@ d.spin()
         self.pub_socket_addrs.append(tcp_addr) 
         self.sub_socket = self.context.socket(zmq.SUB)
         self.sub_socket_addrs = []
+
+        self.poller.register(self.bcast_recv, zmq.POLLIN)
+        self.poller.register(self.pub_socket, zmq.POLLIN)
+        self.poller.register(self.sub_socket, zmq.POLLIN)
 
     def _sighandler(self, sig, frame):
         self.adv_timer.cancel()
@@ -149,16 +152,16 @@ d.spin()
         # struct.pack()
         for i in range(0,GUID_LENGTH):
             msg += struct.pack('<B', (GUID.int >> i*8) & 0xFF)
-        msg += struct.pack('<H', len(publisher['topic']))
+        msg += struct.pack('<B', len(publisher['topic']))
         msg += publisher['topic']
         msg += struct.pack('<B', OP_ADV)
         # Flags unused for now
         flags = [0x00] * FLAGS_LENGTH
         msg += struct.pack('<%dB'%(FLAGS_LENGTH), *flags)
         # We'll announce once for each address
-        for addr in publisher['addrs']:
+        for addr in publisher['addresses']:
             if addr.startswith('inproc'):
-                # We don't broadcast inproc addresses        
+                # Don't broadcast inproc addresses        
                 continue
             # Struct objects copy by value
             mymsg = msg
@@ -180,12 +183,23 @@ d.spin()
         if inproc_addr not in self.pub_socket_addrs:
             publisher['socket'].bind(inproc_addr)
             self.pub_socket_addrs.append(inproc_addr)
-        tcp_addr = [a for a in self.pub_socket_addrs if a.startswith('inproc')][0]
-        publisher['addrs'] = [inproc_addr, tcp_addr]
+        tcp_addr = [a for a in self.pub_socket_addrs if a.startswith('tcp')][0]
+        publisher['addresses'] = [inproc_addr, tcp_addr]
         publisher['topic'] = topic
         self.publishers.append(publisher)
-        self.poller.register(publisher['socket'], zmq.POLLIN)
         self._advertise(publisher)
+
+        # Also connect to internal subscribers, if there are any
+        adv = {}
+        adv['topic'] = topic
+        adv['address'] = inproc_addr
+        adv['guid'] = GUID
+        for sub in self.subscribers:
+            if sub['topic'] == topic:
+                self._connect_subscriber(adv)
+
+    def unadvertise(self, topic):
+        raise Exception("unadvertise not implemented")
 
     def _subscribe(self, subscriber):
         """
@@ -197,7 +211,7 @@ d.spin()
         # struct.pack()
         for i in range(0,GUID_LENGTH):
             msg += struct.pack('<B', (GUID.int >> i*8) & 0xFF)
-        msg += struct.pack('<H', len(subscriber['topic']))
+        msg += struct.pack('<B', len(subscriber['topic']))
         msg += subscriber['topic']
         msg += struct.pack('<B', OP_SUB)
         # Flags unused for now
@@ -218,12 +232,25 @@ d.spin()
         self.subscribers.append(subscriber)
         self._subscribe(subscriber)
 
+        # Also connect to internal publishers, if there are any
+        adv = {}
+        adv['topic'] = subscriber['topic']
+        adv['address'] = 'inproc://%s'%(subscriber['topic'])
+        adv['guid'] = GUID
+        for pub in self.publishers:
+            if pub['topic'] == subscriber['topic']:
+                self._connect_subscriber(adv)
+
+    def unsubscribe(self, topic):
+        raise Exception("unsubscribe not implemented")
+
     def publish(self, topic, msg):
         """
         Publish the given message on the given topic.  You should have called
         advertise() on the topic first.
         """
-        [p['socket'].send(msg) for p in self.publishers if p['topic'] == topic]
+        if [p for p in self.publishers if p['topic'] == topic]:
+            self.pub_socket.send_multipart((topic, msg))
 
     def _handle_adv_sub(self, msg):
         """
@@ -239,12 +266,13 @@ d.spin()
                 print('Warning: mismatched protocol versions: %d != %d'
                       %(version, VERSION))
             offset += 2
-            guid = 0
+            guid_int = 0
             for i in range(0,GUID_LENGTH):
-                guid += struct.unpack_from('<B', data, offset)[0] << 8*i
+                guid_int += struct.unpack_from('<B', data, offset)[0] << 8*i
                 offset += 1
-            topiclength = struct.unpack_from('<H', data, offset)[0]
-            offset += 2
+            guid = uuid.UUID(int=guid_int)
+            topiclength = struct.unpack_from('<B', data, offset)[0]
+            offset += 1
             topic = data[offset:offset+topiclength]
             offset += topiclength
             op = struct.unpack_from('<B', data, offset)[0]
@@ -262,7 +290,7 @@ d.spin()
                 offset += 2
                 adv['address'] = data[offset:offset+addresslength]
                 offset += addresslength
-                print('ADV: %s'%(adv))
+                #print('ADV: %s'%(adv))
                 
                 # Are we interested in this topic?
                 if [s for s in self.subscribers if s['topic'] == adv['topic']]:
@@ -271,7 +299,7 @@ d.spin()
 
             elif op == OP_SUB:
                 # The SUB body is NULL
-                print('SUB: %s'%(sub))
+                #print('SUB: %s'%(msg))
                 # If we're publishing this topic, re-advertise it to allow the
                 # new subscriber to find us.
                 [self._advertise(p) for p in self.publishers if p['topic'] == topic]
@@ -290,9 +318,13 @@ d.spin()
         # as our GUID, then we must both be in the same process, in which case
         # we'd like to use an 'inproc://' address.  Otherwise, fall back on
         # 'tcp://'.
+        #print("Considering %s"%(adv))
         if adv['address'].startswith('tcp'):
-            pass
-        elif adv['address'].startswith('inproc') and adv['guid'] != GUID:
+            if adv['guid'] == GUID:
+                # Us; skip it
+                return
+        elif adv['address'].startswith('inproc'):
+            if adv['guid'] != GUID:
                 # Not us; skip it
                 return
         else:
@@ -300,28 +332,20 @@ d.spin()
             return
 
         # Are we already connected to this publisher for this topic?
-        for i in range(0, len(self.sub_connections)):
-            c = self.sub_connections[i]
-            if c['topic'] == adv['topic'] and c['guid'] == adv['guid']:
-                # It's the same publisher
-        
-        if [c for c in self.sub_connections if c['addr'] == addr]:
-            print('Not connecting again to %s'%(addr))
+        if [c for c in self.sub_connections if c['topic'] == adv['topic'] and c['guid'] == adv['guid']]:
+            #print('Not connecting again to %s'%(adv['address']))
             return
-        # Create a zmq socket
-        sock = self.context.socket(zmq.SUB)
+        # Connect our subscriber socket
         conn = {}
-        conn['socket'] = sock
+        conn['socket'] = self.sub_socket
         conn['topic'] = adv['topic']
-        conn['addr'] = addr
+        conn['address'] = adv['address']
         conn['guid'] = adv['guid']
-        # Subscribe to all messages by specifying an empty filter string.
-        # By default, a SUB socket filters out all messages.
-        sock.setsockopt(zmq.SUBSCRIBE, '')
+        conn['socket'].setsockopt(zmq.SUBSCRIBE, adv['topic'])
         self.sub_connections.append(conn)
-        sock.connect(addr)
-        self.poller.register(sock, zmq.POLLIN)
-        print('Connected to %s for %s'%(addr, adv['topic']))
+        conn['socket'].connect(adv['address'])
+        print('Connected to %s for %s (%s != %s)'%(adv['address'], adv['topic'],
+adv['guid'], GUID))
 
     def _advertisement_repeater(self):
         [self._advertise(p) for p in self.publishers]
@@ -351,15 +375,10 @@ d.spin()
             else:
                 # Must be a zmq socket
                 sock = e[0]
-                # Look up the connection associated with this socket
-                conns = [c for c in self.sub_connections if c['socket'] == sock]
-                if conns:
-                    conn = conns[0]
-                    topic = conn['topic']
-                    # Get the message (assuming that we get it all in one read)
-                    msg = sock.recv()
-                    # Invoke all the callbacks registered for this topic.
-                    [s['cb'](topic, msg) for s in self.subscribers if s['topic']
+                # Get the message (assuming that we get it all in one read)
+                topic, msg = sock.recv_multipart()
+                # Invoke all the callbacks registered for this topic.
+                [s['cb'](topic, msg) for s in self.subscribers if s['topic']
 == topic]
 
     def spin(self):

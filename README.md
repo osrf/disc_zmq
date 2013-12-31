@@ -30,6 +30,7 @@ ZeroMQ message definitions (for which we will let zeromq handle framing):
 
   * publication (PUB) or service request (REQ) or service reply (REP\_OK 
     or REP\_ERR) are multipart messages, with the following parts:
+    * TOPIC (placed first to facilitate filtering)
     * HDR (TYPE = ?)
     * BODY: opaque bytes
 

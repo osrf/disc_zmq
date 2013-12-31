@@ -21,7 +21,9 @@ d = disc_zmq.DZMQ()
 d.subscribe(topic, cb)
 d.advertise(topic)
 
+i = 0
 while True:
-    d.publish(topic, msg)
+    d.publish(topic, '%s %d' % (msg, i))
     d.spinOnce(0)
     time.sleep(0.2)
+    i += 1

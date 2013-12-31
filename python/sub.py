@@ -18,5 +18,5 @@ def cb2(topic, msg):
 
 d = disc_zmq.DZMQ()
 d.subscribe(topic, cb1)
-d.subscribe(topic, cb2)
+#d.subscribe(topic, cb2)
 d.spin()
