@@ -376,7 +376,7 @@ adv['guid'], GUID))
                 # Must be a zmq socket
                 sock = e[0]
                 # Get the message (assuming that we get it all in one read)
-                topic, msg = sock.recv_multipart()
+                topic, header, msg = sock.recv_multipart()
                 # Invoke all the callbacks registered for this topic.
                 [s['cb'](topic, msg) for s in self.subscribers if s['topic']
 == topic]
