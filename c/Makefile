@@ -8,3 +8,6 @@ all:
 	${CC} -o bin/talker src/talker.c ${SRCS} ${LIBRARIES} -g
 	${CC} -o bin/listener src/listener.c ${SRCS} ${LIBRARIES} -g
 	${CC} -o bin/lonely src/lonely.c ${SRCS} ${LIBRARIES} -g
+
+clean:
+	rm -rf bin
