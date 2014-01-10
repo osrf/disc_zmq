@@ -107,9 +107,5 @@ int main(int argc, char *argv[])
 
   node.Spin();
 
-  // Zzzzzz Zzzzzz
-  //std::cout << "Press any key to exit" << std::endl;
-  //getchar();
-
   return 0;
 }

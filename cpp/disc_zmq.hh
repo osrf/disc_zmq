@@ -9,8 +9,8 @@
 #include <map>
 #include <string>
 
+#include "packet.hh"
 #include "sockets/socket.hh"
-#include "transport_defs.hh"
 #include "zmq/zmq.hpp"
 #include "zmq/zmsg.hpp"
 
@@ -22,9 +22,9 @@ class Node
 
     //  ---------------------------------------------------------------------
     /// \brief Constructor.
-    /// \param[in] master End point with the master's endpoint.
+    /// \param[in] _master End point with the master's endpoint.
     /// \param[in] _verbose true for enabling verbose mode.
-    Node (std::string master, bool _verbose)
+    Node (std::string _master, bool _verbose)
     {
       char bindEndPoint[1024];
 
@@ -34,7 +34,7 @@ class Node
       // Required 0mq minimum version
       s_version_assert(2, 1);
 
-      this->master = master;
+      this->master = _master;
       this->verbose = _verbose;
       this->timeout = 250;           // msecs
 
@@ -81,9 +81,14 @@ class Node
         delete this->publisher;
       if (this->subscriber)
         delete this->subscriber;
+      if (this->srvRequester)
+        delete this->srvRequester;
+      if (this->srvReplier)
+        delete this->srvReplier;
       if (this->context)
         delete this->context;
 
+      this->srvAddresses.clear();
       this->topicsAdv.clear();
       this->addressesConnected.clear();
 
@@ -92,10 +97,12 @@ class Node
         it->second.clear();
     }
 
+    //  ---------------------------------------------------------------------
+    /// \brief Determine IP or hostname.
     std::string DetermineHost()
     {
       char *ip_env;
-      // First, did the user set ROS_HOSTNAME?
+      // First, did the user set DZMQ_IP?
       ip_env = getenv("DZMQ_IP");
 
       if (ip_env) {
@@ -125,7 +132,6 @@ class Node
       }
 
       // Third, fall back on interface search, which will yield an IP address
-
     #ifdef HAVE_IFADDRS_H
       struct ifaddrs *ifa = NULL, *ifp = NULL;
       int rc;
@@ -330,83 +336,47 @@ class Node
     /// \param[in] _msg Received message.
     int DispatchDiscoveryMsg(char *_msg)
     {
-      char *p;
-
-      // Header fields
-      uint16_t version;
-      boost::uuids::uuid otherGuid;
-      uint16_t topicLength;
-      char *advTopic;
-      uint8_t type;
-      uint16_t flags;
-
-      // Body fields
+      Header header;
+      AdvMsg advMsg;
       uint16_t addressLength;
       char *address;
-
       std::vector<std::string>::iterator it;
-      std::string otherGuidStr;
+      char *p = _msg;
 
-      // Read the version
-      p = _msg;
-      memcpy(&version, p, sizeof(version));
-      p += sizeof(version);
+      header.Unpack(_msg);
+      p += header.GetHeaderLength();
 
-      // Read the GUID
-      memcpy(&otherGuid, p, otherGuid.size());
-      p += otherGuid.size();
-      otherGuidStr = boost::lexical_cast<std::string>(otherGuid);
-
-      // Read the topic length
-      memcpy(&topicLength, p, sizeof(topicLength));
-      p += sizeof(topicLength);
-
-      // Read the topic
-      advTopic = new char[topicLength + 1];
-      memcpy(advTopic, p, topicLength);
-      advTopic[topicLength] = '\0';
-      p += topicLength;
-
-      // Read the message type
-      memcpy(&type, p, sizeof(type));
-      p += sizeof(type);
-
-      // Read the flags
-      memcpy(&flags, p, sizeof(flags));
-      p += sizeof(flags);
+      std::string advTopic = header.GetTopic();
+      std::string otherGuidStr =
+        boost::lexical_cast<std::string>(header.GetGuid());
 
       if (this->verbose)
       {
         std::cout << "\t--------------------------------------" << std::endl;
         std::cout << "\tHeader:" << std::endl;
-        std::cout << "\t\tVersion: " << version << std::endl;
-        std::cout << "\t\tGUID: " << otherGuidStr << std::endl;
-        std::cout << "\t\tTopic length: " << topicLength << std::endl;
-        std::cout << "\t\tTopic: [" << advTopic << "]" << std::endl;
-        std::cout << "\t\tType: " << msgTypesStr[type] << std::endl;
-        std::cout << "\t\tFlags: " << flags << std::endl;
+        std::cout << "\t\tVersion: " << header.GetVersion() << std::endl;
+        std::cout << "\t\tGUID: " << header.GetGuid() << std::endl;
+        std::cout << "\t\tTopic length: " << header.GetTopicLength() << std::endl;
+        std::cout << "\t\tTopic: [" << header.GetTopic() << "]" << std::endl;
+        std::cout << "\t\tType: " << msgTypesStr[header.GetType()] << std::endl;
+        std::cout << "\t\tFlags: " << header.GetFlags() << std::endl;
       }
 
-      switch (type)
+      switch (header.GetType())
       {
         case ADV:
-          // Read the address length
-          memcpy(&addressLength, p, sizeof(addressLength));
-          p += sizeof(addressLength);
-
-          // Read the address
-          address = new char[addressLength + 1];
-          memcpy(address, p, addressLength);
-          address[addressLength] = '\0';
+          advMsg.UnpackBody(p);
+          address = strdup(advMsg.GetAddress().c_str());
 
           if (this->verbose)
           {
             std::cout << "\tBody:" << std::endl;
-            std::cout << "\t\tAddress length: " << addressLength << "\n";
-            std::cout << "\t\tAddress: " << address << std::endl;
+            std::cout << "\t\tAddress length: " << advMsg.GetAddressLength() << "\n";
+            std::cout << "\t\tAddress: " << advMsg.GetAddress() << std::endl;
           }
 
           // If I already have the topic/address registered, just skip it
+
           if (this->topicsInfo.find(advTopic) != this->topicsInfo.end())
           {
             std::vector<std::string>::iterator it;
@@ -442,7 +412,7 @@ class Node
                   this->guidStr.compare(otherGuidStr) == 0)
                 break;
 
-              const char *filter = advTopic;
+              const char *filter = advTopic.data();
               this->subscriber->setsockopt(ZMQ_SUBSCRIBE, filter,
                                            strlen(filter));
               this->subscriber->connect(address);
@@ -557,7 +527,7 @@ class Node
           break;
 
         default:
-          std::cerr << "Unknown msg type [" << type << "] dispatching msg\n";
+          std::cerr << "Unknown msg type [" << header.GetType() << "] dispatching msg\n";
           break;
       }
 
@@ -575,39 +545,17 @@ class Node
                   << "]" << std::endl;
       }
 
-      uint16_t version = TRNSP_VERSION;
-      uint16_t topicLength = _topic.size();
-      uint16_t flags = 0;
-      uint16_t addressLength = _address.size();
+      Header header(TRNSP_VERSION, this->guid, _topic.size(), _topic, _type, 0);
+      AdvMsg advMsg(header, _address.size(), _address);
 
-      //std::string inprocAddress = "inproc://" + _topic;
-      //std::string allAddresses = this->tcpEndpoint + " " + inprocAddress;
-
-      // Pack the data
-      int dataLength = sizeof(version) + this->guid.size() +
-        sizeof(topicLength) + _topic.size() + sizeof(_type) + sizeof(flags) +
-        sizeof(addressLength) + _address.size();
-      char *data = new char[dataLength];
-      char *p = data;
-      memcpy(p, &version, sizeof(version));
-      p += sizeof(version);
-      memcpy(p, &this->guid, this->guid.size());
-      p += this->guid.size();
-      memcpy(p, &topicLength, sizeof(topicLength));
-      p += sizeof(topicLength);
-      memcpy(p, _topic.data(), topicLength);
-      p += topicLength;
-      memcpy(p, &_type, sizeof(_type));
-      p += sizeof(_type);
-      memcpy(p, &flags, sizeof(flags));
-      p += sizeof(flags);
-      memcpy(p, &addressLength, sizeof(addressLength));
-      p += sizeof(addressLength);
-      memcpy(p, _address.data(), _address.size());
+      char *buffer = new char[advMsg.GetMsgLength()];
+      advMsg.Pack(buffer);
 
       // Send the data through the UDP broadcast socket
-      this->broadcastSocket->sendTo(data, dataLength,
+      this->broadcastSocket->sendTo(buffer, advMsg.GetMsgLength(),
         this->broadcastAddress, this->broadcastPort);
+
+      delete[] buffer;
     }
 
     //  ---------------------------------------------------------------------
@@ -619,31 +567,16 @@ class Node
         std::cout << "\t * Sending SUBSCRIPTION message" << std::endl;
       }
 
-      uint16_t version = TRNSP_VERSION;
-      uint16_t topicLength = _topic.size();
-      uint16_t flags = 0;
+      Header header(TRNSP_VERSION, this->guid, _topic.size(), _topic, _type, 0);
 
-      // Pack the data
-      int dataLength = sizeof(version) + this->guid.size() +
-        sizeof(topicLength) + _topic.size() + sizeof(_type) + sizeof(flags);
-
-      char *data = new char[dataLength];
-      char *p = data;
-      memcpy(p, &version, sizeof(version));
-      p += sizeof(version);
-      memcpy(p, &this->guid, this->guid.size());
-      p += this->guid.size();
-      memcpy(p, &topicLength, sizeof(topicLength));
-      p += sizeof(topicLength);
-      memcpy(p, _topic.data(), topicLength);
-      p += topicLength;
-      memcpy(p, &_type, sizeof(_type));
-      p += sizeof(_type);
-      memcpy(p, &flags, sizeof(flags));
+      char *buffer = new char[header.GetHeaderLength()];
+      header.Pack(buffer);
 
       // Send the data through the UDP broadcast socket
-      this->broadcastSocket->sendTo(data, dataLength,
+      this->broadcastSocket->sendTo(buffer, header.GetHeaderLength(),
         this->broadcastAddress, this->broadcastPort);
+
+      delete[] buffer;
     }
 
     //  ---------------------------------------------------------------------
@@ -664,6 +597,7 @@ class Node
         std::string inprocEP = "inproc://" + _topic;
         this->publisher->bind(inprocEP.c_str());
         this->addresses.push_back(inprocEP);
+
         if (this->verbose)
         {
           std::cout << "\nAdvertise(" << _topic << ")\n";
@@ -678,7 +612,7 @@ class Node
     }
 
     //  ---------------------------------------------------------------------
-    /// \brief Subscribe to a service (topic) registering a callback.
+    /// \brief Publish data.
     /// \param[in] _topic Topic to be published.
     /// \param[in] _data Data to publish.
     int publish(const std::string &_topic, const std::string &_data)
@@ -702,7 +636,7 @@ class Node
     }
 
     //  ---------------------------------------------------------------------
-    /// \brief Subscribe to a service (topic) registering a callback.
+    /// \brief Subscribe to a topic registering a callback.
     /// \param[in] _topic Topic to be subscribed.
     /// \param[in] _fp Pointer to the callback function.
     int subscribe(const std::string &_topic,
