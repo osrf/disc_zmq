@@ -49,13 +49,12 @@ class Header
           const uint8_t _type,
           const uint16_t _flags)
 	{
-		this->version = _version;
-		this->guid = _guid;
-		this->topicLength = _topicLength;
-		this->topic = _topic;
-		this->type = _type;
-		this->flags = _flags;
-
+		this->SetVersion(_version);
+		this->SetGuid(_guid);
+		this->SetTopicLength(_topicLength);
+		this->SetTopic(_topic);
+		this->SetType(_type);
+		this->SetFlags(_flags);
 		this->UpdateHeaderLength();
 	}
 
@@ -118,7 +117,7 @@ class Header
 	//  ---------------------------------------------------------------------
   /// \brief Set the guid.
   /// \param[in] _guid A unique global identifier for every process.
-	void SetGuid(boost::uuids::uuid &_guid)
+	void SetGuid(const boost::uuids::uuid &_guid)
 	{
 		this->guid = _guid;
 	}
@@ -165,8 +164,11 @@ class Header
 	}
 
 	//  ---------------------------------------------------------------------
-  /// \brief Serialize the header. The caller has ownership of the resulting
-  /// buffer and should deallocate the memory when possible.
+  /// \brief Serialize the header. The caller has ownership of the
+  /// buffer and is responsible for its [de]allocation.
+  /// \param[out] _buffer Destination buffer in which the header
+  /// will be serialized.
+  /// \return Number of bytes serialized.
 	size_t Pack(char *_buffer)
 	{
 		if (this->headerLength == 0)
@@ -188,46 +190,43 @@ class Header
 	}
 
 	//  ---------------------------------------------------------------------
-  /// \brief Unserialize the header and release its memory.
-	void Unpack(char *_header)
+  /// \brief Unserialize the header.
+  /// \param[in] _buffer Input buffer containing the data to be unserialized.
+	void Unpack(const char *_buffer)
 	{
-		char *topic;
-
 		// Read the version
-    memcpy(&this->version, _header, sizeof(this->version));
-    _header += sizeof(this->version);
+    memcpy(&this->version, _buffer, sizeof(this->version));
+    _buffer += sizeof(this->version);
 
     // Read the GUID
-    memcpy(&this->guid, _header, this->guid.size());
-    _header += this->guid.size();
+    memcpy(&this->guid, _buffer, this->guid.size());
+    _buffer += this->guid.size();
 
     // Read the topic length
-    memcpy(&this->topicLength, _header, sizeof(this->topicLength));
-    _header += sizeof(this->topicLength);
+    memcpy(&this->topicLength, _buffer, sizeof(this->topicLength));
+    _buffer += sizeof(this->topicLength);
 
     // Read the topic
-    topic = new char[this->topicLength + 1];
-    memcpy(topic, _header, this->topicLength);
+    char *topic = new char[this->topicLength + 1];
+    memcpy(topic, _buffer, this->topicLength);
     topic[this->topicLength] = '\0';
     this->topic = topic;
-    _header += this->topicLength;
+    _buffer += this->topicLength;
+    delete[] topic;
 
     // Read the message type
-    memcpy(&this->type, _header, sizeof(this->type));
-    _header += sizeof(this->type);
+    memcpy(&this->type, _buffer, sizeof(this->type));
+    _buffer += sizeof(this->type);
 
     // Read the flags
-    memcpy(&this->flags, _header, sizeof(this->flags));
-    _header += sizeof(this->flags);
+    memcpy(&this->flags, _buffer, sizeof(this->flags));
+    _buffer += sizeof(this->flags);
 
     this->UpdateHeaderLength();
-
-    // Deallocate memory
-    delete[] topic;
-    //delete[] _header;
 	}
 
 	private:
+
 		//  ---------------------------------------------------------------------
   	/// \brief Calculate the header length.
 		void UpdateHeaderLength()
@@ -236,7 +235,6 @@ class Header
             						   sizeof(this->topicLength) + this->topic.size() +
           	  					   sizeof(this->type) + sizeof(this->flags);
 		}
-
 
 		/// \brief Version of the transport library.
 		uint16_t version;
@@ -266,6 +264,7 @@ class AdvMsg
 		//  ---------------------------------------------------------------------
 		/// \brief Constructor.
 		AdvMsg()
+		  :  msgLength(0)
 		{
 		}
 
@@ -278,9 +277,10 @@ class AdvMsg
 		       const uint16_t _addressLength,
 		       const std::string &_address)
 		{
-			this->header = _header;
-			this->addressLength = _addressLength;
-			this->address = _address;
+			this->SetHeader(_header);
+			this->SetAddressLength(_addressLength);
+			this->SetAddress(_address);
+			this->UpdateMsgLength();
 		}
 
 		Header GetHeader() const
@@ -310,7 +310,8 @@ class AdvMsg
 
 		void SetAddress(const std::string &_address)
 		{
-			this->address = address;
+			this->address = _address;
+			this->UpdateMsgLength();
 		}
 
 		size_t GetMsgLength()
@@ -331,8 +332,7 @@ class AdvMsg
       _buffer += sizeof(this->addressLength);
       memcpy(_buffer, this->address.data(), this->address.size());
 
-    	return this->GetHeader().GetHeaderLength() + sizeof(this->addressLength) +
-    				 this->address.size();
+    	return this->GetMsgLength();
 		}
 
 		size_t UnpackBody(char *_buffer)
@@ -351,9 +351,25 @@ class AdvMsg
 		}
 
 	private:
+
+		//  ---------------------------------------------------------------------
+  	/// \brief Calculate the header length.
+		void UpdateMsgLength()
+		{
+			this->msgLength = this->GetHeader().GetHeaderLength() +
+			                     sizeof(this->addressLength) + this->address.size();
+		}
+
+		/// \brief Message header
 		Header header;
+
+		/// \brief Length of the address contained in this message (bytes).
 		uint16_t addressLength;
+
+		/// \brief ZMQ valid address (e.g., "tcp://10.0.0.1:6000").
 		std::string address;
+
+		/// \brief Length of the message in bytes.
 		int msgLength;
 };
 

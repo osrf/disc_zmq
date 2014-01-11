@@ -77,16 +77,11 @@ class Node
     /// \brief Destructor.
     virtual ~Node()
     {
-      if (this->publisher)
-        delete this->publisher;
-      if (this->subscriber)
-        delete this->subscriber;
-      if (this->srvRequester)
-        delete this->srvRequester;
-      if (this->srvReplier)
-        delete this->srvReplier;
-      if (this->context)
-        delete this->context;
+      delete this->publisher;
+      delete this->subscriber;
+      delete this->srvRequester;
+      delete this->srvReplier;
+      delete this->context;
 
       this->srvAddresses.clear();
       this->topicsAdv.clear();
@@ -341,10 +336,10 @@ class Node
       uint16_t addressLength;
       char *address;
       std::vector<std::string>::iterator it;
-      char *p = _msg;
+      char *pBody = _msg;
 
       header.Unpack(_msg);
-      p += header.GetHeaderLength();
+      pBody += header.GetHeaderLength();
 
       std::string advTopic = header.GetTopic();
       std::string otherGuidStr =
@@ -365,7 +360,7 @@ class Node
       switch (header.GetType())
       {
         case ADV:
-          advMsg.UnpackBody(p);
+          advMsg.UnpackBody(pBody);
           address = strdup(advMsg.GetAddress().c_str());
 
           if (this->verbose)
@@ -430,12 +425,12 @@ class Node
 
         case ADV_SVC:
           // Read the address length
-          memcpy(&addressLength, p, sizeof(addressLength));
-          p += sizeof(addressLength);
+          memcpy(&addressLength, pBody, sizeof(addressLength));
+          pBody += sizeof(addressLength);
 
           // Read the address
           address = new char[addressLength + 1];
-          memcpy(address, p, addressLength);
+          memcpy(address, pBody, addressLength);
           address[addressLength] = '\0';
 
           if (this->verbose)
