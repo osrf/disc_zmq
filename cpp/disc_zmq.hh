@@ -563,12 +563,29 @@ class Node
       this->topicsSrvs.SetRepCallback(_topic, _cb);
 
       if (this->verbose)
-          std::cout << "\nAdvertise srv call(" << _topic << ")\n";
+        std::cout << "\nAdvertise srv call(" << _topic << ")\n";
 
       std::vector<std::string>::iterator it;
       for (it = this->mySrvAddresses.begin();
            it != this->mySrvAddresses.end(); ++it)
         this->SendAdvertiseMsg(ADV_SVC, _topic, *it);
+
+      return 0;
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Unadvertise a service call registering a callback.
+    /// \param[in] _topic Topic to be unadvertised.
+    /// \return 0 when success.
+    int SrvUnAdvertise(const std::string &_topic)
+    {
+      assert(_topic != "");
+
+      this->topicsSrvs.SetAdvertisedByMe(_topic, false);
+      this->topicsSrvs.SetRepCallback(_topic, NULL);
+
+      if (this->verbose)
+        std::cout << "\nUnadvertise srv call(" << _topic << ")\n";
 
       return 0;
     }
@@ -586,11 +603,17 @@ class Node
 
       this->topicsSrvs.SetRequested(_topic, true);
 
-      while (!this->topicsSrvs.Connected(_topic))
+      int retries = 25;
+      while (!this->topicsSrvs.Connected(_topic) && retries > 0)
       {
         this->SendSubscribeMsg(SUB_SVC, _topic);
         this->SpinOnce();
+        s_sleep(200);
+        --retries;
       }
+
+      if (!this->topicsSrvs.Connected(_topic))
+        return -1;
 
       // Send the request
       zmsg msg;

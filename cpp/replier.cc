@@ -92,7 +92,6 @@ int main(int argc, char *argv[])
 {
   // Read the command line arguments
   std::string master, topic, data, response;
-  int rc;
   bool verbose, selfCall;
   if (ReadArgs(argc, argv, verbose, selfCall, master, topic) != 0)
     return -1;
@@ -101,20 +100,23 @@ int main(int argc, char *argv[])
   Node node(master, verbose);
 
   // Advertise a service call
-  rc = node.SrvAdvertise(topic, echo);
-  if (rc != 0)
-    std::cout << "srv_dvertise did not work" << std::endl;
+  if (node.SrvAdvertise(topic, echo) != 0)
+    std::cout << "SrvAdvertise did not work" << std::endl;
 
   if (selfCall)
   {
     // Request my own service call
     data = "";
-    rc = node.SrvRequest(topic, data, response);
+    int rc = node.SrvRequest(topic, data, response);
     if (rc == 0)
       std::cout << "Response: " << response << std::endl;
     else
-      std::cout << "srv_request did not work" << std::endl;
+      std::cout << "SrvRequest did not work" << std::endl;
   }
+
+  // Unadvertise a service call
+  if (node.SrvUnAdvertise(topic) != 0)
+    std::cout << "SrvUnAdvertise did not work" << std::endl;
 
   // Zzzzzz Zzzzzz
   node.Spin();
