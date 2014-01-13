@@ -101,7 +101,7 @@ int main(int argc, char *argv[])
   Node node(master, verbose);
 
   // Advertise a service call
-  rc = node.srv_advertise(topic, echo);
+  rc = node.SrvAdvertise(topic, echo);
   if (rc != 0)
     std::cout << "srv_dvertise did not work" << std::endl;
 
@@ -109,7 +109,7 @@ int main(int argc, char *argv[])
   {
     // Request my own service call
     data = "";
-    rc = node.srv_request(topic, data, response);
+    rc = node.SrvRequest(topic, data, response);
     if (rc == 0)
       std::cout << "Response: " << response << std::endl;
     else

@@ -71,7 +71,7 @@ class Node
         this->srvReplier->getsockopt(ZMQ_LAST_ENDPOINT, &bindEndPoint, &size);
         this->mySrvAddresses.push_back(bindEndPoint);
       }
-      catch(const zmq::error_t& ze)
+      catch (const zmq::error_t& ze)
       {
          std::cerr << "Error: " << ze.what() << std::endl;
          this->Fini();
@@ -118,9 +118,11 @@ class Node
       unsigned short srcPort;        // Port of datagram source
       int bytes;                 // Rcvd from the UDP broadcast socket
 
-      try {
+      try
+      {
         bytes = this->bcastSock->recvFrom(rcvStr, MaxRcvStr, srcAddr, srcPort);
-      } catch (SocketException &e) {
+      } catch (SocketException &e)
+      {
         cerr << "Exception receiving from the UDP socket: " << e.what() << endl;
         return;
       }
@@ -400,9 +402,12 @@ class Node
           this->bcastAddr, this->bcastPort);
       } catch (SocketException &e) {
         cerr << "Exception sending an ADV msg: " << e.what() << endl;
+        delete[] buffer;
+        return -1;
       }
 
       delete[] buffer;
+      return 0;
     }
 
     //  ---------------------------------------------------------------------
@@ -429,15 +434,19 @@ class Node
           this->bcastAddr, this->bcastPort);
       } catch (SocketException &e) {
         cerr << "Exception sending a SUB msg: " << e.what() << endl;
+        delete[] buffer;
+        return -1;
       }
 
       delete[] buffer;
+      return 0;
     }
 
     //  ---------------------------------------------------------------------
     /// \brief Advertise a new service.
     /// \param[in] _topic Topic to be advertised.
-    int advertise(const std::string &_topic)
+    /// \return 0 when success.
+    int Advertise(const std::string &_topic)
     {
       assert(_topic != "");
 
@@ -451,34 +460,57 @@ class Node
     }
 
     //  ---------------------------------------------------------------------
-    /// \brief Publish data.
-    /// \param[in] _topic Topic to be published.
-    /// \param[in] _data Data to publish.
-    int publish(const std::string &_topic, const std::string &_data)
+    /// \brief Unadvertise a new service.
+    /// \param[in] _topic Topic to be unadvertised.
+    /// \return 0 when success.
+    int UnAdvertise(const std::string &_topic)
     {
       assert(_topic != "");
 
-      zmsg msg;
-      std::string sender = this->tcpEndpoint;
-      msg.push_back((char*)_topic.c_str());
-      msg.push_back((char*)sender.c_str());
-      msg.push_back((char*)_data.c_str());
-
-      if (this->verbose)
-      {
-        std::cout << "\nPublish(" << _topic << ")" << std::endl;
-        msg.dump();
-      }
-      msg.send(*this->publisher);
+      this->topics.SetAdvertisedByMe(_topic, false);
 
       return 0;
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Publish data.
+    /// \param[in] _topic Topic to be published.
+    /// \param[in] _data Data to publish.
+    /// \return 0 when success.
+    int Publish(const std::string &_topic, const std::string &_data)
+    {
+      assert(_topic != "");
+
+      if (this->topics.AdvertisedByMe(_topic))
+      {
+        zmsg msg;
+        std::string sender = this->tcpEndpoint;
+        msg.push_back((char*)_topic.c_str());
+        msg.push_back((char*)sender.c_str());
+        msg.push_back((char*)_data.c_str());
+
+        if (this->verbose)
+        {
+          std::cout << "\nPublish(" << _topic << ")" << std::endl;
+          msg.dump();
+        }
+        msg.send(*this->publisher);
+        return 0;
+      }
+      else
+      {
+        if (this->verbose)
+          std::cerr << "\nNot published. (" << _topic << ") not advertised\n";
+        return -1;
+      }
     }
 
     //  ---------------------------------------------------------------------
     /// \brief Subscribe to a topic registering a callback.
     /// \param[in] _topic Topic to be subscribed.
     /// \param[in] _cb Pointer to the callback function.
-    int subscribe(const std::string &_topic,
+    /// \return 0 when success.
+    int Subscribe(const std::string &_topic,
       void(*_cb)(const std::string &, const std::string &))
     {
       assert(_topic != "");
@@ -495,7 +527,25 @@ class Node
       this->subscriber->setsockopt(ZMQ_SUBSCRIBE, _topic.data(), _topic.size());
 
       // Discover the list of nodes that publish on the topic
-      this->SendSubscribeMsg(SUB, _topic);
+      return this->SendSubscribeMsg(SUB, _topic);
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Subscribe to a topic registering a callback.
+    /// \param[in] _topic Topic to be unsubscribed.
+    /// \return 0 when success.
+    int UnSubscribe(const std::string &_topic)
+    {
+      assert(_topic != "");
+      if (this->verbose)
+        std::cout << "\nUnubscribe (" << _topic << ")\n";
+
+      this->topics.SetSubscribed(_topic, false);
+      this->topics.SetCallback(_topic, NULL);
+
+      // Remove the filter for this topic
+      this->subscriber->setsockopt(ZMQ_UNSUBSCRIBE, _topic.data(),
+                                  _topic.size());
       return 0;
     }
 
@@ -503,7 +553,8 @@ class Node
     /// \brief Advertise a new service call registering a callback.
     /// \param[in] _topic Topic to be advertised.
     /// \param[in] _cb Pointer to the callback function.
-    int srv_advertise(const std::string &_topic,
+    /// \return 0 when success.
+    int SrvAdvertise(const std::string &_topic,
       int(*_cb)(const std::string &, const std::string &, std::string &))
     {
       assert(_topic != "");
@@ -527,7 +578,8 @@ class Node
     /// \param[in] _topic Topic requested.
     /// \param[in] _data Data of the request.
     /// \param[out] _response Response of the request.
-    int srv_request(const std::string &_topic, const std::string &_data,
+    /// \return 0 when success.
+    int SrvRequest(const std::string &_topic, const std::string &_data,
       std::string &_response)
     {
       assert(_topic != "");
@@ -577,7 +629,8 @@ class Node
     /// \param[in] _topic Topic requested.
     /// \param[in] _data Data of the request.
     /// \param[in] _cb Pointer to the callback function.
-    int srv_request_async(const std::string &_topic, const std::string &_data,
+    /// \return 0 when success.
+    int SrvRequestAsync(const std::string &_topic, const std::string &_data,
       void(*_cb)(const std::string &_topic, int rc, const std::string &_rep))
     {
       assert(_topic != "");

@@ -106,14 +106,14 @@ int main(int argc, char *argv[])
   Node node(master, verbose);
 
   // Advertise a topic
-  rc = node.advertise(topic);
+  rc = node.Advertise(topic);
   if (rc != 0)
     std::cout << "Advertise did not work" << std::endl;
 
   if (selfSubscribe)
   {
     // Self-subscribe to the topic
-    rc = node.subscribe(topic, cb);
+    rc = node.Subscribe(topic, cb);
     if (rc != 0)
       std::cout << "Subscribe did not work" << std::endl;
   }
@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
   // Publish data
   for (int i = 0; i < numMessages; ++i)
   {
-    node.publish(topic, data);
+    node.Publish(topic, data);
     node.SpinOnce();
   }
 

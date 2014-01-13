@@ -111,10 +111,10 @@ int main(int argc, char *argv[])
   for (int i = 0; i < numSrvs; ++i)
   {
     if (async)
-      rc = node.srv_request_async(topic, data, cb);
+      rc = node.SrvRequestAsync(topic, data, cb);
     else
     {
-      rc = node.srv_request(topic, data, response);
+      rc = node.SrvRequest(topic, data, response);
       if (rc == 0)
         std::cout << "Result: " << response << std::endl;
     }

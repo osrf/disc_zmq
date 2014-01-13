@@ -100,9 +100,15 @@ int main(int argc, char *argv[])
   // Subscribe to the list of topics
   for (int i = 0; i < topics.size(); ++i)
   {
-    int rc = node.subscribe(topics[i], cb);
+    int rc = node.Subscribe(topics[i], cb);
     if (rc != 0)
       std::cout << "subscribe for topic [" << topics[i] << "] did not work\n";
+
+    /*
+    rc = node.UnSubscribe(topics[i]);
+    if (rc != 0)
+      std::cout << "unsubscribe for topic [" << topics[i] << "] did not work\n";
+    */
   }
 
   node.Spin();

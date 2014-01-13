@@ -62,7 +62,6 @@ int hostname_to_ip(char * hostname , char* ip)
 std::string DetermineHost()
 {
   char *ip_env;
-  char hostIP[INET_ADDRSTRLEN];
   // First, did the user set DZMQ_IP?
   ip_env = getenv("DZMQ_IP");
 
@@ -82,6 +81,7 @@ std::string DetermineHost()
   // We don't want localhost to be our ip
   else if(strlen(host) && strcmp("localhost", host))
   {
+    char hostIP[INET_ADDRSTRLEN];
     strcat(host, ".local");
     if (hostname_to_ip(host, hostIP) == 0)
     {
