@@ -6,15 +6,17 @@
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <iostream>
-#include <map>
 #include <string>
 
+#include "netUtils.hh"
 #include "packet.hh"
 #include "sockets/socket.hh"
+#include "topicsInfo.hh"
 #include "zmq/zmq.hpp"
 #include "zmq/zmsg.hpp"
 
-const int MAXRCVSTRING = 65536; // Longest string to receive
+const int MaxRcvStr = 65536; // Longest string to receive
+const std::string InprocAddr = "inproc://local";
 
 class Node
 {
@@ -38,36 +40,49 @@ class Node
       this->verbose = _verbose;
       this->timeout = 250;           // msecs
 
-      // ToDo Read this from getenv
-      this->broadcastAddress = "255.255.255.255";
-      this->broadcastPort = 11312;
-      this->broadcastSocket = new UDPSocket(this->broadcastPort);
-      this->hostAddress = this->DetermineHost();
+      // ToDo Read this from getenv or command line arguments
+      this->bcastAddr = "255.255.255.255";
+      this->bcastPort = 11312;
+      this->bcastSock = new UDPSocket(this->bcastPort);
+      this->hostAddr = DetermineHost();
 
       // Create the GUID
       this->guid = boost::uuids::random_generator()();
       this->guidStr = boost::lexical_cast<std::string>(this->guid);
 
       // 0MQ
-      this->context = new zmq::context_t(1);
-      this->publisher = new zmq::socket_t(*this->context, ZMQ_PUB);
-      this->subscriber = new zmq::socket_t(*this->context, ZMQ_SUB);
-      this->srvRequester = new zmq::socket_t(*this->context, ZMQ_DEALER);
-      this->srvReplier = new zmq::socket_t(*this->context, ZMQ_DEALER);
-      std::string ep = "tcp://" + this->hostAddress + ":*";
-      this->publisher->bind(ep.c_str());
-      size_t size = sizeof(bindEndPoint);
-      this->publisher->getsockopt(ZMQ_LAST_ENDPOINT, &bindEndPoint, &size);
-      this->tcpEndpoint = bindEndPoint;
-      this->addresses.push_back(this->tcpEndpoint);
-      this->srvReplier->bind(ep.c_str());
-      this->srvReplier->getsockopt(ZMQ_LAST_ENDPOINT, &bindEndPoint, &size);
-      this->srvAddresses.push_back(bindEndPoint);
+      try
+      {
+        this->context = new zmq::context_t(1);
+        this->publisher = new zmq::socket_t(*this->context, ZMQ_PUB);
+        this->subscriber = new zmq::socket_t(*this->context, ZMQ_SUB);
+        this->srvRequester = new zmq::socket_t(*this->context, ZMQ_DEALER);
+        this->srvReplier = new zmq::socket_t(*this->context, ZMQ_DEALER);
+        std::string ep = "tcp://" + this->hostAddr + ":*";
+        this->publisher->bind(ep.c_str());
+        size_t size = sizeof(bindEndPoint);
+        this->publisher->getsockopt(ZMQ_LAST_ENDPOINT, &bindEndPoint, &size);
+        this->publisher->bind(InprocAddr.c_str());
+        this->tcpEndpoint = bindEndPoint;
+        this->myAddresses.push_back(this->tcpEndpoint);
+        this->subscriber->connect(InprocAddr.c_str());
+
+        this->srvReplier->bind(ep.c_str());
+        this->srvReplier->getsockopt(ZMQ_LAST_ENDPOINT, &bindEndPoint, &size);
+        this->mySrvAddresses.push_back(bindEndPoint);
+      }
+      catch(const zmq::error_t& ze)
+      {
+         std::cerr << "Error: " << ze.what() << std::endl;
+         this->Fini();
+         exit(EXIT_FAILURE);
+      }
 
       if (this->verbose)
       {
-        std::cout << "Current host address: " << this->hostAddress << std::endl;
+        std::cout << "Current host address: " << this->hostAddr << std::endl;
         std::cout << "Bind at: [" << this->tcpEndpoint << "] for pub/sub\n";
+        std::cout << "Bind at: [" << InprocAddr << "] for pub/sub\n";
         std::cout << "Bind at: [" << bindEndPoint << "] for req/rep\n";
         std::cout << "GUID: " << this->guidStr << std::endl;
       }
@@ -77,146 +92,45 @@ class Node
     /// \brief Destructor.
     virtual ~Node()
     {
-      delete this->publisher;
-      delete this->subscriber;
-      delete this->srvRequester;
-      delete this->srvReplier;
-      delete this->context;
-
-      this->srvAddresses.clear();
-      this->topicsAdv.clear();
-      this->addressesConnected.clear();
-
-      Topics_M::iterator it;
-      for (it = this->topicsInfo.begin(); it != this->topicsInfo.end(); ++it)
-        it->second.clear();
+      this->Fini();
     }
 
     //  ---------------------------------------------------------------------
-    /// \brief Determine IP or hostname.
-    std::string DetermineHost()
+    /// \brief Deallocate resources.
+    void Fini()
     {
-      char *ip_env;
-      // First, did the user set DZMQ_IP?
-      ip_env = getenv("DZMQ_IP");
+      if (this->publisher) delete this->publisher;
+      if (this->publisher) delete this->subscriber;
+      if (this->publisher) delete this->srvRequester;
+      if (this->publisher) delete this->srvReplier;
+      if (this->publisher) delete this->context;
 
-      if (ip_env) {
-        if (this->verbose)
-          std::cout << "determineHost: using value of DZMQ_IP: "
-                    << ip_env << std::endl;
-
-        if (strlen(ip_env) == 0)
-        {
-          std::cerr << "invalid DZMQ_IP (an empty string)" << std::endl;
-        }
-        return ip_env;
-      }
-
-      // Second, try the hostname
-      char host[1024];
-      memset(host,0,sizeof(host));
-      if (gethostname(host, sizeof(host) - 1) != 0)
-      {
-        if (this->verbose)
-          std::cerr << "determineIP: gethostname failed" << std::endl;
-      }
-      // We don't want localhost to be our ip
-      else if(strlen(host) && strcmp("localhost", host))
-      {
-        return std::string(host);
-      }
-
-      // Third, fall back on interface search, which will yield an IP address
-    #ifdef HAVE_IFADDRS_H
-      struct ifaddrs *ifa = NULL, *ifp = NULL;
-      int rc;
-      if ((rc = getifaddrs(&ifp)) < 0)
-      {
-       std::cerr << "error in getifaddrs: " << strerror(rc) << std::endl;
-       exit -1;
-      }
-      char preferred_ip[200] = {0};
-      for (ifa = ifp; ifa; ifa = ifa->ifa_next)
-      {
-        char ip_[200];
-        socklen_t salen;
-        if (!ifa->ifa_addr)
-          continue; // evidently this interface has no ip address
-        if (ifa->ifa_addr->sa_family == AF_INET)
-          salen = sizeof(struct sockaddr_in);
-        else if (ifa->ifa_addr->sa_family == AF_INET6)
-          salen = sizeof(struct sockaddr_in6);
-        else
-          continue;
-        if (getnameinfo(ifa->ifa_addr, salen, ip_, sizeof(ip_), NULL, 0,
-                        NI_NUMERICHOST) < 0)
-        {
-          if (this->verbose)
-            std::cout << "getnameinfo couldn't get the ip of interface " <<
-                         ifa->ifa_name << std::endl;
-          continue;
-        }
-
-        // prefer non-private IPs over private IPs
-        if (!strcmp("127.0.0.1", ip_) || strchr(ip_,':'))
-          continue; // ignore loopback unless we have no other choice
-        if (ifa->ifa_addr->sa_family == AF_INET6 && !preferred_ip[0])
-          strcpy(preferred_ip, ip_);
-        else if (isPrivateIP(ip_) && !preferred_ip[0])
-          strcpy(preferred_ip, ip_);
-        else if (!isPrivateIP(ip_) &&
-                 (isPrivateIP(preferred_ip) || !preferred_ip[0]))
-          strcpy(preferred_ip, ip_);
-      }
-      freeifaddrs(ifp);
-      if (!preferred_ip[0])
-      {
-        std::cerr <<
-          "Couldn't find a preferred IP via the getifaddrs() call; "
-          "I'm assuming that your IP "
-          "address is 127.0.0.1.  This should work for local processes, "
-          "but will almost certainly not work if you have remote processes."
-          "Report to the disc-zmq development team to seek a fix." << std::endl;
-        return std::string("127.0.0.1");
-      }
-      if (this->verbose)
-        std::cerr << "preferred IP is guessed to be " << preferred_ip << "\n";
-      return std::string(preferred_ip);
-    #else
-      // @todo Fix IP determination in the case where getifaddrs() isn't
-      // available.
-      std::cerr <<
-        "You don't have the getifaddrs() call; I'm assuming that your IP "
-        "address is 127.0.0.1.  This should work for local processes, "
-        "but will almost certainly not work if you have remote processes."
-        "Report to the disc-zmq development team to seek a fix." << std::endl;
-      return std::string("127.0.0.1");
-    #endif
+      this->myAddresses.clear();
+      this->mySrvAddresses.clear();
     }
 
     //  ---------------------------------------------------------------------
     /// \brief Method in charge of receiving the discovery updates.
     void RecvDiscoveryUpdates()
     {
-     try {
-        char recvString[MAXRCVSTRING];     // Buffer for data
-        std::string sourceAddress;         // Address of datagram source
-        unsigned short sourcePort;         // Port of datagram source
-        int bytesRcvd = this->broadcastSocket->recvFrom(recvString,
-          MAXRCVSTRING, sourceAddress, sourcePort);
+      char rcvStr[MaxRcvStr];     // Buffer for data
+      std::string srcAddr;           // Address of datagram source
+      unsigned short srcPort;        // Port of datagram source
+      int bytes;                 // Rcvd from the UDP broadcast socket
 
-        if (this->verbose)
-        {
-          cout << "\nReceived discovery update from " << sourceAddress <<
-                  ": " << sourcePort << " (" << bytesRcvd << " bytes)" << endl;
-        }
-
-        if (this->DispatchDiscoveryMsg(recvString) != 0)
-          std::cerr << "Something went wrong parsing a discovery message\n";
-
+      try {
+        bytes = this->bcastSock->recvFrom(rcvStr, MaxRcvStr, srcAddr, srcPort);
       } catch (SocketException &e) {
-        cerr << e.what() << endl;
+        cerr << "Exception receiving from the UDP socket: " << e.what() << endl;
+        return;
       }
+
+      if (this->verbose)
+        cout << "\nReceived discovery update from " << srcAddr <<
+                ": " << srcPort << " (" << bytes << " bytes)" << endl;
+
+      if (this->DispatchDiscoveryMsg(rcvStr) != 0)
+        std::cerr << "Something went wrong parsing a discovery message\n";
     }
 
     //  ---------------------------------------------------------------------
@@ -229,23 +143,34 @@ class Node
         std::cout << "\nReceived topic update" << std::endl;
         msg->dump();
       }
+
+      if (msg->parts() != 3)
+      {
+        std::cerr << "Unexpected topic update. Expected 3 message parts but "
+                  << "received a message with " << msg->parts() << std::endl;
+        return;
+      }
+
       // Read the DATA message
       std::string topic = std::string((char*)msg->pop_front().c_str());
       msg->pop_front(); // Sender
       std::string data = std::string((char*)msg->pop_front().c_str());
 
-      if (this->topicsSub.find(topic) != this->topicsSub.end())
+      if (this->topics.Subscribed(topic))
       {
         // Execute the callback registered
-        Callback cb = this->topicsSub[topic];
-        cb(topic, data);
+        TopicsInfo::Callback cb;
+        if (this->topics.GetCallback(topic, cb))
+          cb(topic, data);
+        else
+          std::cerr << "I don't have a callback for topic [" << topic << "]\n";
       }
       else
-        std::cerr << "I Don't have a callback for topic [" << topic << "]\n";
+        std::cerr << "I am not subscribed to topic [" << topic << "]\n";
     }
 
     //  ---------------------------------------------------------------------
-    /// \brief Method in charge of receiving the topic updates.
+    /// \brief Method in charge of receiving the service call requests.
     void RecvSrvRequest()
     {
       zmsg *msg = new zmsg (*this->srvReplier);
@@ -254,24 +179,33 @@ class Node
         std::cout << "\nReceived service request" << std::endl;
         msg->dump();
       }
+
+      if (msg->parts() != 3)
+      {
+        std::cerr << "Unexpected service request. Expected 3 message parts but "
+                  << "received a message with " << msg->parts() << std::endl;
+        return;
+      }
+
       // Read the REQ message
       std::string topic = std::string((char*)msg->pop_front().c_str());
       msg->pop_front(); // Sender
       std::string data = std::string((char*)msg->pop_front().c_str());
 
-      if (this->srvsAdv.find(topic) != this->srvsAdv.end())
+      if (this->topicsSrvs.AdvertisedByMe(topic))
       {
         // Execute the callback registered
-        RepCallback cb = this->srvsAdv[topic];
-
+        TopicsInfo::RepCallback cb;
         std::string response;
-        int rc = cb(topic, data, response);
+        if (this->topicsSrvs.GetRepCallback(topic, cb))
+          int rc = cb(topic, data, response);
+        else
+          std::cerr << "I don't have a REP cback for topic [" << topic << "]\n";
 
         // Send the service call response
-        std::string sender = this->tcpEndpoint + " inproc://" + topic;
         zmsg reply;
         reply.push_back((char*)topic.c_str());
-        reply.push_back((char*)sender.c_str());
+        reply.push_back((char*)this->tcpEndpoint.c_str());
         reply.push_back((char*)response.c_str());
         // Todo: include the return code
 
@@ -284,8 +218,7 @@ class Node
       }
       else
       {
-        std::cerr << "Received a service call that I'm not advertising ("
-                  << topic << ")\n";
+        std::cerr << "Received a svc call not advertised (" << topic << ")\n";
       }
     }
 
@@ -297,23 +230,17 @@ class Node
       zmq::pollitem_t items [] = {
         { *this->subscriber, 0, ZMQ_POLLIN, 0 },
         { *this->srvReplier, 0, ZMQ_POLLIN, 0 },
-        { 0, this->broadcastSocket->sockDesc, ZMQ_POLLIN, 0 }
+        { 0, this->bcastSock->sockDesc, ZMQ_POLLIN, 0 }
       };
       zmq::poll(&items[0], 3, this->timeout);
 
       //  If we got a reply, process it
       if (items [0].revents & ZMQ_POLLIN)
-      {
         this->RecvTopicUpdates();
-      }
       else if (items [1].revents & ZMQ_POLLIN)
-      {
         this->RecvSrvRequest();
-      }
       else if (items [2].revents & ZMQ_POLLIN)
-      {
         this->RecvDiscoveryUpdates();
-      }
     }
 
     //  ---------------------------------------------------------------------
@@ -329,200 +256,116 @@ class Node
     //  ---------------------------------------------------------------------
     /// \brief Parse a discovery message received via the UDP broadcast socket.
     /// \param[in] _msg Received message.
+    /// \return 0 when success.
     int DispatchDiscoveryMsg(char *_msg)
     {
       Header header;
       AdvMsg advMsg;
-      uint16_t addressLength;
-      char *address;
-      std::vector<std::string>::iterator it;
+      std::string address;
       char *pBody = _msg;
+      std::vector<std::string>::iterator it;
 
       header.Unpack(_msg);
       pBody += header.GetHeaderLength();
 
-      std::string advTopic = header.GetTopic();
-      std::string otherGuidStr =
-        boost::lexical_cast<std::string>(header.GetGuid());
+      std::string topic = header.GetTopic();
+      std::string rcvdGuid = boost::lexical_cast<std::string>(header.GetGuid());
 
       if (this->verbose)
-      {
-        std::cout << "\t--------------------------------------" << std::endl;
-        std::cout << "\tHeader:" << std::endl;
-        std::cout << "\t\tVersion: " << header.GetVersion() << std::endl;
-        std::cout << "\t\tGUID: " << header.GetGuid() << std::endl;
-        std::cout << "\t\tTopic length: " << header.GetTopicLength() << std::endl;
-        std::cout << "\t\tTopic: [" << header.GetTopic() << "]" << std::endl;
-        std::cout << "\t\tType: " << msgTypesStr[header.GetType()] << std::endl;
-        std::cout << "\t\tFlags: " << header.GetFlags() << std::endl;
-      }
+        header.Print();
 
       switch (header.GetType())
       {
         case ADV:
+          // Read the address
           advMsg.UnpackBody(pBody);
-          address = strdup(advMsg.GetAddress().c_str());
+          address = advMsg.GetAddress();
 
           if (this->verbose)
-          {
-            std::cout << "\tBody:" << std::endl;
-            std::cout << "\t\tAddress length: " << advMsg.GetAddressLength() << "\n";
-            std::cout << "\t\tAddress: " << advMsg.GetAddress() << std::endl;
-          }
+            advMsg.PrintBody();
 
-          // If I already have the topic/address registered, just skip it
-
-          if (this->topicsInfo.find(advTopic) != this->topicsInfo.end())
-          {
-            std::vector<std::string>::iterator it;
-            it = find(this->topicsInfo[advTopic].begin(),
-                      this->topicsInfo[advTopic].end(), address);
-
-            if (it != this->topicsInfo[advTopic].end())
-              break;
-          }
-
-          // Update the hash of topics/addresses
-          this->topicsInfo[advTopic].push_back(address);
+          // Register the advertised address for the topic
+          this->topics.AddAdvAddress(topic, address);
 
           // Check if we are interested in this topic
-          if (this->topicsSub.find(advTopic) != this->topicsSub.end())
+          if (this->topics.Subscribed(topic) &&
+              !this->topics.Connected(topic) &&
+              this->guidStr.compare(rcvdGuid) != 0)
           {
             try
             {
-              // If we're already connected, don't do it again
-              std::vector<std::string>::iterator it;
-              it = std::find(this->addressesConnected.begin(),
-                             this->addressesConnected.end(), address);
-              if (it != this->addressesConnected.end())
-                break;
-
-              // Connect to an inproc address only if GUID matches
-              if (boost::starts_with(address, "inproc://") &&
-                  this->guidStr.compare(otherGuidStr) != 0)
-                break;
-
-              // Do not connect to a non-inproc if you can choose an inproc
-              if (!boost::starts_with(address, "inproc://") &&
-                  this->guidStr.compare(otherGuidStr) == 0)
-                break;
-
-              const char *filter = advTopic.data();
-              this->subscriber->setsockopt(ZMQ_SUBSCRIBE, filter,
-                                           strlen(filter));
-              this->subscriber->connect(address);
-              this->addressesConnected.push_back(address);
+              this->subscriber->connect(address.c_str());
+              this->topics.SetConnected(topic, true);
               if (this->verbose)
                 std::cout << "\t* Connected to [" << address << "]\n";
             }
-            catch (const zmq::error_t& ex)
+            catch (const zmq::error_t& ze)
             {
-              std::cout << "Error connecting [" << zmq_errno() << "]\n";
+              std::cout << "Error connecting [" << ze.what() << "]\n";
             }
           }
 
           break;
 
         case ADV_SVC:
-          // Read the address length
-          memcpy(&addressLength, pBody, sizeof(addressLength));
-          pBody += sizeof(addressLength);
-
           // Read the address
-          address = new char[addressLength + 1];
-          memcpy(address, pBody, addressLength);
-          address[addressLength] = '\0';
+          advMsg.UnpackBody(pBody);
+          address = advMsg.GetAddress();
 
           if (this->verbose)
-          {
-            std::cout << "\tBody:" << std::endl;
-            std::cout << "\t\tAddress length: " << addressLength << "\n";
-            std::cout << "\t\tAddress: " << address << std::endl;
-          }
+            advMsg.PrintBody();
 
-          // If I already have the topic/address registered, just skip it
-          if (this->srvsInfo.find(advTopic) != this->srvsInfo.end())
-          {
-            std::vector<std::string>::iterator it;
-            it = find(this->srvsInfo[advTopic].begin(),
-                      this->srvsInfo[advTopic].end(), address);
-
-            if (it != this->srvsInfo[advTopic].end())
-              break;
-          }
-
-          // Update the hash of topics/addresses
-          this->srvsInfo[advTopic].push_back(address);
+          // Register the advertised address for the service call
+          this->topicsSrvs.AddAdvAddress(topic, address);
 
           // Check if we are interested in this service call
-          if (this->srvsReq.find(advTopic) != this->srvsReq.end())
+          if (this->topicsSrvs.Requested(topic) &&
+              !this->topicsSrvs.Connected(topic) &&
+              this->guidStr.compare(rcvdGuid) != 0)
           {
             try
             {
-              // If we're already connected, don't do it again
-              std::vector<std::string>::iterator it;
-              it = std::find(this->srvsAddressesConnected.begin(),
-                             this->srvsAddressesConnected.end(), address);
-              if (it != this->srvsAddressesConnected.end())
-                break;
-
-              // Connect to an inproc address only if GUID matches
-              if (boost::starts_with(address, "inproc://") &&
-                  this->guidStr.compare(otherGuidStr) != 0)
-                break;
-
-              // Do not connect to a non-inproc if you can choose an inproc
-              /*if (!boost::starts_with(address, "inproc://") &&
-                  this->guidStr.compare(otherGuidStr) == 0)
-                break;*/
-
-              this->srvRequester->connect(address);
-              this->srvsAddressesConnected.push_back(address);
+              this->srvRequester->connect(address.c_str());
+              this->topicsSrvs.SetConnected(topic, true);
               if (this->verbose)
                 std::cout << "\t* Connected to [" << address << "]\n";
             }
-            catch (const zmq::error_t& ex)
+            catch (const zmq::error_t& ze)
             {
-              std::cout << "Error connecting [" << zmq_errno() << "]\n";
+              std::cout << "Error connecting [" << ze.what() << "]\n";
             }
           }
 
           break;
 
         case SUB:
-
           // Check if I advertise the topic requested
-          it = std::find(this->topicsAdv.begin(), this->topicsAdv.end(),
-                         advTopic);
-          if (it != this->topicsAdv.end())
+          if (this->topics.AdvertisedByMe(topic))
           {
             // Send to the broadcast socket an ADVERTISE message
-            std::vector<std::string>::iterator it2;
-            for (it2 = this->addresses.begin(); it2 != this->addresses.end();
-                 ++it2)
-              this->SendAdvertiseMsg(ADV, advTopic, *it2);
+            for (it = this->myAddresses.begin();
+                 it != this->myAddresses.end(); ++it)
+              this->SendAdvertiseMsg(ADV, topic, *it);
           }
 
           break;
 
         case SUB_SVC:
-
           // Check if I advertise the service call requested
-          if (this->srvsAdv.find(advTopic) != this->srvsAdv.end());
+          if (this->topicsSrvs.AdvertisedByMe(topic))
           {
             // Send to the broadcast socket an ADV_SVC message
-            std::vector<std::string>::iterator it2;
-            for (it2 = this->srvAddresses.begin();
-                 it2 != this->srvAddresses.end(); ++it2)
+            for (it = this->mySrvAddresses.begin();
+                 it != this->mySrvAddresses.end(); ++it)
             {
-              this->SendAdvertiseMsg(ADV_SVC, advTopic, *it2);
+              this->SendAdvertiseMsg(ADV_SVC, topic, *it);
             }
           }
 
           break;
 
         default:
-          std::cerr << "Unknown msg type [" << header.GetType() << "] dispatching msg\n";
+          std::cerr << "Unknown message type [" << header.GetType() << "]\n";
           break;
       }
 
@@ -531,14 +374,18 @@ class Node
 
     //  ---------------------------------------------------------------------
     /// \brief Send an ADVERTISE message to the discovery socket.
+    /// \param[in] _type ADV or ADV_SVC.
+    /// \param[in] _topic Topic to be advertised.
+    /// \param[in] _address Address to be advertised with the topic.
+    /// \return 0 when success.
     int SendAdvertiseMsg(uint8_t _type, const std::string &_topic,
                          const std::string &_address)
     {
+      assert(_topic != "");
+
       if (this->verbose)
-      {
         std::cout << "\t* Sending ADV msg [" << _topic << "][" << _address
                   << "]" << std::endl;
-      }
 
       Header header(TRNSP_VERSION, this->guid, _topic.size(), _topic, _type, 0);
       AdvMsg advMsg(header, _address.size(), _address);
@@ -547,20 +394,28 @@ class Node
       advMsg.Pack(buffer);
 
       // Send the data through the UDP broadcast socket
-      this->broadcastSocket->sendTo(buffer, advMsg.GetMsgLength(),
-        this->broadcastAddress, this->broadcastPort);
+      try
+      {
+        this->bcastSock->sendTo(buffer, advMsg.GetMsgLength(),
+          this->bcastAddr, this->bcastPort);
+      } catch (SocketException &e) {
+        cerr << "Exception sending an ADV msg: " << e.what() << endl;
+      }
 
       delete[] buffer;
     }
 
     //  ---------------------------------------------------------------------
-    /// \brief Send an ADVERTISE message to the discovery socket.
+    /// \brief Send a SUBSCRIBE message to the discovery socket.
+    /// \param[in] _type SUB or SUB_SVC.
+    /// \param[in] _topic Topic name.
+    /// \return 0 when success.
     int SendSubscribeMsg(uint8_t _type, const std::string &_topic)
     {
+      assert(_topic != "");
+
       if (this->verbose)
-      {
-        std::cout << "\t * Sending SUBSCRIPTION message" << std::endl;
-      }
+        std::cout << "\t* Sending SUB msg [" << _topic << "]" << std::endl;
 
       Header header(TRNSP_VERSION, this->guid, _topic.size(), _topic, _type, 0);
 
@@ -568,8 +423,13 @@ class Node
       header.Pack(buffer);
 
       // Send the data through the UDP broadcast socket
-      this->broadcastSocket->sendTo(buffer, header.GetHeaderLength(),
-        this->broadcastAddress, this->broadcastPort);
+      try
+      {
+        this->bcastSock->sendTo(buffer, header.GetHeaderLength(),
+          this->bcastAddr, this->bcastPort);
+      } catch (SocketException &e) {
+        cerr << "Exception sending a SUB msg: " << e.what() << endl;
+      }
 
       delete[] buffer;
     }
@@ -581,26 +441,10 @@ class Node
     {
       assert(_topic != "");
 
-      // Only bind to the topic and add to the advertised topic list, once
+      this->topics.SetAdvertisedByMe(_topic, true);
+
       std::vector<std::string>::iterator it;
-      it = std::find(this->topicsAdv.begin(), this->topicsAdv.end(), _topic);
-      if (it == this->topicsAdv.end())
-      {
-        this->topicsAdv.push_back(_topic);
-
-        // Bind using the inproc address
-        std::string inprocEP = "inproc://" + _topic;
-        this->publisher->bind(inprocEP.c_str());
-        this->addresses.push_back(inprocEP);
-
-        if (this->verbose)
-        {
-          std::cout << "\nAdvertise(" << _topic << ")\n";
-          std::cout << "\t* Bind at: [" << inprocEP << "]\n";
-        }
-      }
-
-      for (it = this->addresses.begin(); it != this->addresses.end(); ++it)
+      for (it = this->myAddresses.begin(); it != this->myAddresses.end(); ++it)
         this->SendAdvertiseMsg(ADV, _topic, *it);
 
       return 0;
@@ -615,7 +459,7 @@ class Node
       assert(_topic != "");
 
       zmsg msg;
-      std::string sender = this->tcpEndpoint + " inproc://" + _topic;
+      std::string sender = this->tcpEndpoint;
       msg.push_back((char*)_topic.c_str());
       msg.push_back((char*)sender.c_str());
       msg.push_back((char*)_data.c_str());
@@ -625,7 +469,7 @@ class Node
         std::cout << "\nPublish(" << _topic << ")" << std::endl;
         msg.dump();
       }
-      msg.send (*this->publisher);
+      msg.send(*this->publisher);
 
       return 0;
     }
@@ -633,9 +477,9 @@ class Node
     //  ---------------------------------------------------------------------
     /// \brief Subscribe to a topic registering a callback.
     /// \param[in] _topic Topic to be subscribed.
-    /// \param[in] _fp Pointer to the callback function.
+    /// \param[in] _cb Pointer to the callback function.
     int subscribe(const std::string &_topic,
-      void(*_fp)(const std::string &, const std::string &))
+      void(*_cb)(const std::string &, const std::string &))
     {
       assert(_topic != "");
       if (this->verbose)
@@ -644,7 +488,11 @@ class Node
       // Register our interest on the topic
       // The last subscribe call replaces previous subscriptions. If this is
       // a problem, we have to store a list of callbacks.
-      this->topicsSub[_topic] = _fp;
+      this->topics.SetSubscribed(_topic, true);
+      this->topics.SetCallback(_topic, _cb);
+
+      // Add a filter for this topic
+      this->subscriber->setsockopt(ZMQ_SUBSCRIBE, _topic.data(), _topic.size());
 
       // Discover the list of nodes that publish on the topic
       this->SendSubscribeMsg(SUB, _topic);
@@ -654,26 +502,21 @@ class Node
     //  ---------------------------------------------------------------------
     /// \brief Advertise a new service call registering a callback.
     /// \param[in] _topic Topic to be advertised.
-    /// \param[in] _fp Pointer to the callback function.
+    /// \param[in] _cb Pointer to the callback function.
     int srv_advertise(const std::string &_topic,
-      int(*_fp)(const std::string &, const std::string &, std::string &))
+      int(*_cb)(const std::string &, const std::string &, std::string &))
     {
       assert(_topic != "");
 
-      // Only advertise the same service call once
-      if (this->srvsAdv.find(_topic) == this->srvsAdv.end());
-      {
-        this->srvsAdv[_topic] = _fp;
+      this->topicsSrvs.SetAdvertisedByMe(_topic, true);
+      this->topicsSrvs.SetRepCallback(_topic, _cb);
 
-        if (this->verbose)
-        {
+      if (this->verbose)
           std::cout << "\nAdvertise srv call(" << _topic << ")\n";
-        }
-      }
 
       std::vector<std::string>::iterator it;
-      for (it = this->srvAddresses.begin(); it != this->srvAddresses.end();
-           ++it)
+      for (it = this->mySrvAddresses.begin();
+           it != this->mySrvAddresses.end(); ++it)
         this->SendAdvertiseMsg(ADV_SVC, _topic, *it);
 
       return 0;
@@ -689,31 +532,28 @@ class Node
     {
       assert(_topic != "");
 
-      srvsReq[_topic] = NULL;
+      this->topicsSrvs.SetRequested(_topic, true);
 
-      while (this->srvsInfo.find(_topic) == this->srvsInfo.end())
+      while (!this->topicsSrvs.Connected(_topic))
       {
         this->SendSubscribeMsg(SUB_SVC, _topic);
         this->SpinOnce();
       }
 
       // Send the request
-      std::string sender = this->tcpEndpoint + " inproc://" + _topic;
       zmsg msg;
       msg.push_back((char*)_topic.c_str());
-      msg.push_back((char*)sender.c_str());
+      msg.push_back((char*)this->tcpEndpoint.c_str());
       msg.push_back((char*)_data.c_str());
 
       if (this->verbose)
       {
         std::cout << "\nRequest (" << _topic << ")" << std::endl;
-        std::cout << "\t* Found node advertising the service call at "
-                  << this->srvsInfo[_topic].at(0) << std::endl;
         msg.dump();
       }
       msg.send (*this->srvRequester);
 
-      //  Poll socket for a reply, with timeout
+      // Poll socket for a reply, with timeout
       zmq::pollitem_t items [] = { { *this->srvRequester, 0, ZMQ_POLLIN, 0 } };
       zmq::poll(items, 1, this->timeout);
 
@@ -722,8 +562,8 @@ class Node
       {
         zmsg *reply = new zmsg (*this->srvRequester);
 
-        std::string topic = std::string((char*)reply->pop_front().c_str());
-        std::string sender = std::string((char*)reply->pop_front().c_str());
+        std::string((char*)reply->pop_front().c_str());
+        std::string((char*)reply->pop_front().c_str());
         _response = std::string((char*)reply->pop_front().c_str());
 
         return 0;
@@ -733,14 +573,20 @@ class Node
     }
 
     //  ---------------------------------------------------------------------
-    /// \brief Request a new service to another component using a non-blocking
-    /// call.
+    /// \brief Request a new service call using a non-blocking call.
     /// \param[in] _topic Topic requested.
     /// \param[in] _data Data of the request.
-    /// \param[in] _fp Pointer to the callback function.
+    /// \param[in] _cb Pointer to the callback function.
     int srv_request_async(const std::string &_topic, const std::string &_data,
-      void(*_fp)(const std::string &_topic, int rc, const std::string &_rep))
+      void(*_cb)(const std::string &_topic, int rc, const std::string &_rep))
     {
+      assert(_topic != "");
+
+      this->topicsSrvs.SetRequested(_topic, true);
+      this->topicsSrvs.SetReqCallback(_topic, _cb);
+
+      this->SendSubscribeMsg(SUB_SVC, _topic);
+
       return 0;
     }
 
@@ -751,52 +597,21 @@ class Node
     // Print activity to stdout
     int verbose;
 
-    // Hash with the topic/addresses information for pub/sub
-    typedef std::vector<std::string> Topics_L;
-    typedef std::map<std::string, Topics_L> Topics_M;
-    Topics_M topicsInfo;
-
-    // Hash with the topic/addresses information for service calls
-    Topics_M srvsInfo;
-
-    // Advertised topics
-    std::vector<std::string> topicsAdv;
-
-    // Subscribed topics
-    typedef boost::function<void (const std::string &,
-                                  const std::string &)> Callback;
-    typedef std::map<std::string, Callback> Callback_M;
-    Callback_M topicsSub;
-
-    // Advertised service calls
-    typedef boost::function<void (const std::string &, int,
-                                  const std::string &)> ReqCallback;
-    typedef boost::function<int (const std::string &, const std::string &,
-                                 std::string &)> RepCallback;
-    typedef std::map<std::string, ReqCallback> ReqCallback_M;
-    typedef std::map<std::string, RepCallback> RepCallback_M;
-    RepCallback_M srvsAdv;
-
-    // Requested service calls
-    ReqCallback_M srvsReq;
+    // Topic information
+    TopicsInfo topics;
+    TopicsInfo topicsSrvs;
 
     // My pub/sub address
-    std::vector<std::string> addresses;
+    std::vector<std::string> myAddresses;
 
     // My req/rep address
-    std::vector<std::string> srvAddresses;
-
-    // Pub/sub connected addresses
-    std::vector<std::string> addressesConnected;
-
-    // Srv calls connected addresses
-    std::vector<std::string> srvsAddressesConnected;
+    std::vector<std::string> mySrvAddresses;
 
     // UDP broadcast thread
-    std::string hostAddress;
-    std::string broadcastAddress;
-    int broadcastPort;
-    UDPSocket *broadcastSocket;
+    std::string hostAddr;
+    std::string bcastAddr;
+    int bcastPort;
+    UDPSocket *bcastSock;
 
     // 0MQ Sockets
     zmq::context_t *context;

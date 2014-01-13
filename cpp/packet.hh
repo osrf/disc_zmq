@@ -163,6 +163,20 @@ class Header
 		return this->headerLength;
 	}
 
+  //  ---------------------------------------------------------------------
+  /// \brief Print the header.
+  void Print()
+  {
+    std::cout << "\t--------------------------------------\n";
+    std::cout << "\tHeader:" << std::endl;
+    std::cout << "\t\tVersion: " << this->GetVersion() << "\n";
+    std::cout << "\t\tGUID: " << this->GetGuid() << "\n";
+    std::cout << "\t\tTopic length: " << this->GetTopicLength() << "\n";
+    std::cout << "\t\tTopic: [" << this->GetTopic() << "]\n";
+    std::cout << "\t\tType: " << msgTypesStr[this->GetType()] << "\n";
+    std::cout << "\t\tFlags: " << this->GetFlags() << "\n";
+  }
+
 	//  ---------------------------------------------------------------------
   /// \brief Serialize the header. The caller has ownership of the
   /// buffer and is responsible for its [de]allocation.
@@ -319,6 +333,13 @@ class AdvMsg
 			return this->header.GetHeaderLength() + sizeof(this->addressLength) +
     				 this->address.size();
 		}
+
+    void PrintBody()
+    {
+      std::cout << "\tBody:" << std::endl;
+      std::cout << "\t\tAddr size: " << this->GetAddressLength() << std::endl;
+      std::cout << "\t\tAddress: " << this->GetAddress() << std::endl;
+    }
 
 		size_t Pack(char *_buffer)
 		{
