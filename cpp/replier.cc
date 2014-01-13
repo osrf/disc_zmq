@@ -115,8 +115,8 @@ int main(int argc, char *argv[])
   }
 
   // Unadvertise a service call
-  if (node.SrvUnAdvertise(topic) != 0)
-    std::cout << "SrvUnAdvertise did not work" << std::endl;
+  //if (node.SrvUnAdvertise(topic) != 0)
+  //  std::cout << "SrvUnAdvertise did not work" << std::endl;
 
   // Zzzzzz Zzzzzz
   node.Spin();
