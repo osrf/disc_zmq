@@ -3,6 +3,8 @@
 
 #include <boost/uuid/uuid_io.hpp>
 #include <cstddef>
+#include <iostream>
+#include <string.h>
 
 //  This is the version of Gazebo transport we implement
 #define TRNSP_VERSION       1
