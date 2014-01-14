@@ -2,7 +2,9 @@
 #define __NET_UTILS_HH_INCLUDED__
 
 #include <arpa/inet.h>
+#include <cstring>
 #include <netdb.h>
+#include <stdlib.h>
 #include <string>
 
 #include "build/config.hh"

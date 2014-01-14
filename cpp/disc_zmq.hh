@@ -58,8 +58,8 @@ class Node
         this->subscriber = new zmq::socket_t(*this->context, ZMQ_SUB);
         this->srvRequester = new zmq::socket_t(*this->context, ZMQ_DEALER);
         this->srvReplier = new zmq::socket_t(*this->context, ZMQ_DEALER);
-        std::string ep = "tcp://" + this->hostAddr + ":*";
-        this->publisher->bind(ep.c_str());
+        std::string anyTcpEP = "tcp://" + this->hostAddr + ":*";
+        this->publisher->bind(anyTcpEP.c_str());
         size_t size = sizeof(bindEndPoint);
         this->publisher->getsockopt(ZMQ_LAST_ENDPOINT, &bindEndPoint, &size);
         this->publisher->bind(InprocAddr.c_str());
@@ -67,9 +67,10 @@ class Node
         this->myAddresses.push_back(this->tcpEndpoint);
         this->subscriber->connect(InprocAddr.c_str());
 
-        this->srvReplier->bind(ep.c_str());
+        this->srvReplier->bind(anyTcpEP.c_str());
         this->srvReplier->getsockopt(ZMQ_LAST_ENDPOINT, &bindEndPoint, &size);
-        this->mySrvAddresses.push_back(bindEndPoint);
+        this->srvReplierEP = bindEndPoint;
+        this->mySrvAddresses.push_back(this->srvReplierEP);
       }
       catch (const zmq::error_t& ze)
       {
@@ -83,7 +84,8 @@ class Node
         std::cout << "Current host address: " << this->hostAddr << std::endl;
         std::cout << "Bind at: [" << this->tcpEndpoint << "] for pub/sub\n";
         std::cout << "Bind at: [" << InprocAddr << "] for pub/sub\n";
-        std::cout << "Bind at: [" << bindEndPoint << "] for req/rep\n";
+        std::cout << "Bind at: [" << this->srvReplierEP << "] for reps\n";
+        std::cout << "Bind at: [" << this->srvRequesterEP << "] for reqs\n";
         std::cout << "GUID: " << this->guidStr << std::endl;
       }
     }
@@ -96,145 +98,19 @@ class Node
     }
 
     //  ---------------------------------------------------------------------
-    /// \brief Deallocate resources.
-    void Fini()
-    {
-      if (this->publisher) delete this->publisher;
-      if (this->publisher) delete this->subscriber;
-      if (this->publisher) delete this->srvRequester;
-      if (this->publisher) delete this->srvReplier;
-      if (this->publisher) delete this->context;
-
-      this->myAddresses.clear();
-      this->mySrvAddresses.clear();
-    }
-
-    //  ---------------------------------------------------------------------
-    /// \brief Method in charge of receiving the discovery updates.
-    void RecvDiscoveryUpdates()
-    {
-      char rcvStr[MaxRcvStr];     // Buffer for data
-      std::string srcAddr;           // Address of datagram source
-      unsigned short srcPort;        // Port of datagram source
-      int bytes;                 // Rcvd from the UDP broadcast socket
-
-      try
-      {
-        bytes = this->bcastSock->recvFrom(rcvStr, MaxRcvStr, srcAddr, srcPort);
-      } catch (SocketException &e)
-      {
-        cerr << "Exception receiving from the UDP socket: " << e.what() << endl;
-        return;
-      }
-
-      if (this->verbose)
-        cout << "\nReceived discovery update from " << srcAddr <<
-                ": " << srcPort << " (" << bytes << " bytes)" << endl;
-
-      if (this->DispatchDiscoveryMsg(rcvStr) != 0)
-        std::cerr << "Something went wrong parsing a discovery message\n";
-    }
-
-    //  ---------------------------------------------------------------------
-    /// \brief Method in charge of receiving the topic updates.
-    void RecvTopicUpdates()
-    {
-      zmsg *msg = new zmsg (*this->subscriber);
-      if (this->verbose)
-      {
-        std::cout << "\nReceived topic update" << std::endl;
-        msg->dump();
-      }
-
-      if (msg->parts() != 3)
-      {
-        std::cerr << "Unexpected topic update. Expected 3 message parts but "
-                  << "received a message with " << msg->parts() << std::endl;
-        return;
-      }
-
-      // Read the DATA message
-      std::string topic = std::string((char*)msg->pop_front().c_str());
-      msg->pop_front(); // Sender
-      std::string data = std::string((char*)msg->pop_front().c_str());
-
-      if (this->topics.Subscribed(topic))
-      {
-        // Execute the callback registered
-        TopicsInfo::Callback cb;
-        if (this->topics.GetCallback(topic, cb))
-          cb(topic, data);
-        else
-          std::cerr << "I don't have a callback for topic [" << topic << "]\n";
-      }
-      else
-        std::cerr << "I am not subscribed to topic [" << topic << "]\n";
-    }
-
-    //  ---------------------------------------------------------------------
-    /// \brief Method in charge of receiving the service call requests.
-    void RecvSrvRequest()
-    {
-      zmsg *msg = new zmsg (*this->srvReplier);
-      if (this->verbose)
-      {
-        std::cout << "\nReceived service request" << std::endl;
-        msg->dump();
-      }
-
-      if (msg->parts() != 3)
-      {
-        std::cerr << "Unexpected service request. Expected 3 message parts but "
-                  << "received a message with " << msg->parts() << std::endl;
-        return;
-      }
-
-      // Read the REQ message
-      std::string topic = std::string((char*)msg->pop_front().c_str());
-      msg->pop_front(); // Sender
-      std::string data = std::string((char*)msg->pop_front().c_str());
-
-      if (this->topicsSrvs.AdvertisedByMe(topic))
-      {
-        // Execute the callback registered
-        TopicsInfo::RepCallback cb;
-        std::string response;
-        if (this->topicsSrvs.GetRepCallback(topic, cb))
-          int rc = cb(topic, data, response);
-        else
-          std::cerr << "I don't have a REP cback for topic [" << topic << "]\n";
-
-        // Send the service call response
-        zmsg reply;
-        reply.push_back((char*)topic.c_str());
-        reply.push_back((char*)this->tcpEndpoint.c_str());
-        reply.push_back((char*)response.c_str());
-        // Todo: include the return code
-
-        if (this->verbose)
-        {
-          std::cout << "\nResponse (" << topic << ")" << std::endl;
-          reply.dump();
-        }
-        reply.send (*this->srvReplier);
-      }
-      else
-      {
-        std::cerr << "Received a svc call not advertised (" << topic << ")\n";
-      }
-    }
-
-    //  ---------------------------------------------------------------------
     /// \brief Receive the next message.
     void SpinOnce()
     {
+      this->SendPendingAsyncSrvCalls();
+
       //  Poll socket for a reply, with timeout
       zmq::pollitem_t items [] = {
         { *this->subscriber, 0, ZMQ_POLLIN, 0 },
         { *this->srvReplier, 0, ZMQ_POLLIN, 0 },
-        { 0, this->bcastSock->sockDesc, ZMQ_POLLIN, 0 }
+        { 0, this->bcastSock->sockDesc, ZMQ_POLLIN, 0 },
+        { *this->srvRequester, 0, ZMQ_POLLIN, 0 }
       };
-      zmq::poll(&items[0], 3, this->timeout);
+      zmq::poll(&items[0], sizeof(items) / sizeof(items[0]), this->timeout);
 
       //  If we got a reply, process it
       if (items [0].revents & ZMQ_POLLIN)
@@ -243,6 +119,8 @@ class Node
         this->RecvSrvRequest();
       else if (items [2].revents & ZMQ_POLLIN)
         this->RecvDiscoveryUpdates();
+      else if (items [3].revents & ZMQ_POLLIN)
+        this->RecvSrvReply();
     }
 
     //  ---------------------------------------------------------------------
@@ -253,193 +131,6 @@ class Node
       {
         this->SpinOnce();
       }
-    }
-
-    //  ---------------------------------------------------------------------
-    /// \brief Parse a discovery message received via the UDP broadcast socket.
-    /// \param[in] _msg Received message.
-    /// \return 0 when success.
-    int DispatchDiscoveryMsg(char *_msg)
-    {
-      Header header;
-      AdvMsg advMsg;
-      std::string address;
-      char *pBody = _msg;
-      std::vector<std::string>::iterator it;
-
-      header.Unpack(_msg);
-      pBody += header.GetHeaderLength();
-
-      std::string topic = header.GetTopic();
-      std::string rcvdGuid = boost::lexical_cast<std::string>(header.GetGuid());
-
-      if (this->verbose)
-        header.Print();
-
-      switch (header.GetType())
-      {
-        case ADV:
-          // Read the address
-          advMsg.UnpackBody(pBody);
-          address = advMsg.GetAddress();
-
-          if (this->verbose)
-            advMsg.PrintBody();
-
-          // Register the advertised address for the topic
-          this->topics.AddAdvAddress(topic, address);
-
-          // Check if we are interested in this topic
-          if (this->topics.Subscribed(topic) &&
-              !this->topics.Connected(topic) &&
-              this->guidStr.compare(rcvdGuid) != 0)
-          {
-            try
-            {
-              this->subscriber->connect(address.c_str());
-              this->topics.SetConnected(topic, true);
-              if (this->verbose)
-                std::cout << "\t* Connected to [" << address << "]\n";
-            }
-            catch (const zmq::error_t& ze)
-            {
-              std::cout << "Error connecting [" << ze.what() << "]\n";
-            }
-          }
-
-          break;
-
-        case ADV_SVC:
-          // Read the address
-          advMsg.UnpackBody(pBody);
-          address = advMsg.GetAddress();
-
-          if (this->verbose)
-            advMsg.PrintBody();
-
-          // Register the advertised address for the service call
-          this->topicsSrvs.AddAdvAddress(topic, address);
-
-          // Check if we are interested in this service call
-          if (this->topicsSrvs.Requested(topic) &&
-              !this->topicsSrvs.Connected(topic) &&
-              this->guidStr.compare(rcvdGuid) != 0)
-          {
-            try
-            {
-              this->srvRequester->connect(address.c_str());
-              this->topicsSrvs.SetConnected(topic, true);
-              if (this->verbose)
-                std::cout << "\t* Connected to [" << address << "]\n";
-            }
-            catch (const zmq::error_t& ze)
-            {
-              std::cout << "Error connecting [" << ze.what() << "]\n";
-            }
-          }
-
-          break;
-
-        case SUB:
-          // Check if I advertise the topic requested
-          if (this->topics.AdvertisedByMe(topic))
-          {
-            // Send to the broadcast socket an ADVERTISE message
-            for (it = this->myAddresses.begin();
-                 it != this->myAddresses.end(); ++it)
-              this->SendAdvertiseMsg(ADV, topic, *it);
-          }
-
-          break;
-
-        case SUB_SVC:
-          // Check if I advertise the service call requested
-          if (this->topicsSrvs.AdvertisedByMe(topic))
-          {
-            // Send to the broadcast socket an ADV_SVC message
-            for (it = this->mySrvAddresses.begin();
-                 it != this->mySrvAddresses.end(); ++it)
-            {
-              this->SendAdvertiseMsg(ADV_SVC, topic, *it);
-            }
-          }
-
-          break;
-
-        default:
-          std::cerr << "Unknown message type [" << header.GetType() << "]\n";
-          break;
-      }
-
-      return 0;
-    }
-
-    //  ---------------------------------------------------------------------
-    /// \brief Send an ADVERTISE message to the discovery socket.
-    /// \param[in] _type ADV or ADV_SVC.
-    /// \param[in] _topic Topic to be advertised.
-    /// \param[in] _address Address to be advertised with the topic.
-    /// \return 0 when success.
-    int SendAdvertiseMsg(uint8_t _type, const std::string &_topic,
-                         const std::string &_address)
-    {
-      assert(_topic != "");
-
-      if (this->verbose)
-        std::cout << "\t* Sending ADV msg [" << _topic << "][" << _address
-                  << "]" << std::endl;
-
-      Header header(TRNSP_VERSION, this->guid, _topic.size(), _topic, _type, 0);
-      AdvMsg advMsg(header, _address.size(), _address);
-
-      char *buffer = new char[advMsg.GetMsgLength()];
-      advMsg.Pack(buffer);
-
-      // Send the data through the UDP broadcast socket
-      try
-      {
-        this->bcastSock->sendTo(buffer, advMsg.GetMsgLength(),
-          this->bcastAddr, this->bcastPort);
-      } catch (SocketException &e) {
-        cerr << "Exception sending an ADV msg: " << e.what() << endl;
-        delete[] buffer;
-        return -1;
-      }
-
-      delete[] buffer;
-      return 0;
-    }
-
-    //  ---------------------------------------------------------------------
-    /// \brief Send a SUBSCRIBE message to the discovery socket.
-    /// \param[in] _type SUB or SUB_SVC.
-    /// \param[in] _topic Topic name.
-    /// \return 0 when success.
-    int SendSubscribeMsg(uint8_t _type, const std::string &_topic)
-    {
-      assert(_topic != "");
-
-      if (this->verbose)
-        std::cout << "\t* Sending SUB msg [" << _topic << "]" << std::endl;
-
-      Header header(TRNSP_VERSION, this->guid, _topic.size(), _topic, _type, 0);
-
-      char *buffer = new char[header.GetHeaderLength()];
-      header.Pack(buffer);
-
-      // Send the data through the UDP broadcast socket
-      try
-      {
-        this->bcastSock->sendTo(buffer, header.GetHeaderLength(),
-          this->bcastAddr, this->bcastPort);
-      } catch (SocketException &e) {
-        cerr << "Exception sending a SUB msg: " << e.what() << endl;
-        delete[] buffer;
-        return -1;
-      }
-
-      delete[] buffer;
-      return 0;
     }
 
     //  ---------------------------------------------------------------------
@@ -660,6 +351,10 @@ class Node
 
       this->topicsSrvs.SetRequested(_topic, true);
       this->topicsSrvs.SetReqCallback(_topic, _cb);
+      this->topicsSrvs.AddReq(_topic, _data);
+
+      if (this->verbose)
+        std::cout << "\nAsync request (" << _topic << ")" << std::endl;
 
       this->SendSubscribeMsg(SUB_SVC, _topic);
 
@@ -667,6 +362,393 @@ class Node
     }
 
   private:
+    //  ---------------------------------------------------------------------
+    /// \brief Deallocate resources.
+    void Fini()
+    {
+      if (this->publisher) delete this->publisher;
+      if (this->publisher) delete this->subscriber;
+      if (this->publisher) delete this->srvRequester;
+      if (this->publisher) delete this->srvReplier;
+      if (this->publisher) delete this->context;
+
+      this->myAddresses.clear();
+      this->mySrvAddresses.clear();
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Method in charge of receiving the discovery updates.
+    void RecvDiscoveryUpdates()
+    {
+      char rcvStr[MaxRcvStr];     // Buffer for data
+      std::string srcAddr;           // Address of datagram source
+      unsigned short srcPort;        // Port of datagram source
+      int bytes;                 // Rcvd from the UDP broadcast socket
+
+      try
+      {
+        bytes = this->bcastSock->recvFrom(rcvStr, MaxRcvStr, srcAddr, srcPort);
+      } catch (SocketException &e)
+      {
+        cerr << "Exception receiving from the UDP socket: " << e.what() << endl;
+        return;
+      }
+
+      if (this->verbose)
+        cout << "\nReceived discovery update from " << srcAddr <<
+                ": " << srcPort << " (" << bytes << " bytes)" << endl;
+
+      if (this->DispatchDiscoveryMsg(rcvStr) != 0)
+        std::cerr << "Something went wrong parsing a discovery message\n";
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Method in charge of receiving the topic updates.
+    void RecvTopicUpdates()
+    {
+      zmsg *msg = new zmsg (*this->subscriber);
+      if (this->verbose)
+      {
+        std::cout << "\nReceived topic update" << std::endl;
+        msg->dump();
+      }
+
+      if (msg->parts() != 3)
+      {
+        std::cerr << "Unexpected topic update. Expected 3 message parts but "
+                  << "received a message with " << msg->parts() << std::endl;
+        return;
+      }
+
+      // Read the DATA message
+      std::string topic = std::string((char*)msg->pop_front().c_str());
+      msg->pop_front(); // Sender
+      std::string data = std::string((char*)msg->pop_front().c_str());
+
+      if (this->topics.Subscribed(topic))
+      {
+        // Execute the callback registered
+        TopicInfo::Callback cb;
+        if (this->topics.GetCallback(topic, cb))
+          cb(topic, data);
+        else
+          std::cerr << "I don't have a callback for topic [" << topic << "]\n";
+      }
+      else
+        std::cerr << "I am not subscribed to topic [" << topic << "]\n";
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Method in charge of receiving the service call requests.
+    void RecvSrvRequest()
+    {
+      zmsg *msg = new zmsg (*this->srvReplier);
+      if (this->verbose)
+      {
+        std::cout << "\nReceived service request" << std::endl;
+        msg->dump();
+      }
+
+      if (msg->parts() != 3)
+      {
+        std::cerr << "Unexpected service request. Expected 3 message parts but "
+                  << "received a message with " << msg->parts() << std::endl;
+        return;
+      }
+
+      // Read the REQ message
+      std::string topic = std::string((char*)msg->pop_front().c_str());
+      std::string sender = std::string((char*)msg->pop_front().c_str());
+      std::string data = std::string((char*)msg->pop_front().c_str());
+
+      if (this->topicsSrvs.AdvertisedByMe(topic))
+      {
+        // Execute the callback registered
+        TopicInfo::RepCallback cb;
+        std::string response;
+        if (this->topicsSrvs.GetRepCallback(topic, cb))
+          int rc = cb(topic, data, response);
+        else
+          std::cerr << "I don't have a REP cback for topic [" << topic << "]\n";
+
+        // Send the service call response
+        zmsg reply;
+        reply.push_back((char*)topic.c_str());
+        reply.push_back((char*)this->srvReplierEP.c_str());
+        reply.push_back((char*)response.c_str());
+        // Todo: include the return code
+
+        if (this->verbose)
+        {
+          std::cout << "\nResponse (" << topic << ")" << std::endl;
+          reply.dump();
+        }
+        reply.send (*this->srvReplier);
+      }
+      else
+      {
+        std::cerr << "Received a svc call not advertised (" << topic << ")\n";
+      }
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Method in charge of receiving the async service call replies.
+    void RecvSrvReply()
+    {
+      zmsg *msg = new zmsg (*this->srvRequester);
+      if (this->verbose)
+      {
+        std::cout << "\nReceived async service reply" << std::endl;
+        msg->dump();
+      }
+
+      if (msg->parts() != 3)
+      {
+        std::cerr << "Unexpected service reply. Expected 3 message parts but "
+                  << "received a message with " << msg->parts() << std::endl;
+        return;
+      }
+
+      // Read the SRV_REP message
+      std::string topic = std::string((char*)msg->pop_front().c_str());
+      std::string((char*)msg->pop_front().c_str());
+      std::string response = std::string((char*)msg->pop_front().c_str());
+
+      // Execute the callback registered
+      TopicInfo::ReqCallback cb;
+      if (this->topicsSrvs.GetReqCallback(topic, cb))
+        // ToDo: send the return code
+        cb(topic, 0, response);
+      else
+        std::cerr << "REQ callback for topic [" << topic << "] not found\n";
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Send all the pendings asynchronous service calls (if possible)
+    void SendPendingAsyncSrvCalls()
+    {
+      // Check if there are any pending requests ready to send
+      for (TopicInfo::Topics_M_it it = this->topicsSrvs.GetTopics().begin();
+           it != this->topicsSrvs.GetTopics().end(); it++)
+      {
+        std::string topic = it->first;
+
+        if (!this->topicsSrvs.Connected(topic))
+          continue;
+
+        while (this->topicsSrvs.PendingReqs(topic))
+        {
+          std::string data;
+          if (!this->topicsSrvs.DelReq(topic, data))
+          {
+            std::cerr << "Something went wrong removing a service request on "
+                      << "topic (" << topic << ")\n";
+            continue;
+          }
+
+          // Send the service call request
+          zmsg msg;
+          msg.push_back((char*)topic.c_str());
+          msg.push_back((char*)this->srvRequesterEP.c_str());
+          msg.push_back((char*)data.c_str());
+
+          if (this->verbose)
+          {
+            std::cout << "\nAsync request [" << topic << "][" << data << "]\n";
+            msg.dump();
+          }
+          msg.send (*this->srvRequester);
+        }
+      }
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Parse a discovery message received via the UDP broadcast socket.
+    /// \param[in] _msg Received message.
+    /// \return 0 when success.
+    int DispatchDiscoveryMsg(char *_msg)
+    {
+      Header header;
+      AdvMsg advMsg;
+      std::string address;
+      char *pBody = _msg;
+      std::vector<std::string>::iterator it;
+
+      header.Unpack(_msg);
+      pBody += header.GetHeaderLength();
+
+      std::string topic = header.GetTopic();
+      std::string rcvdGuid = boost::lexical_cast<std::string>(header.GetGuid());
+
+      if (this->verbose)
+        header.Print();
+
+      switch (header.GetType())
+      {
+        case ADV:
+          // Read the address
+          advMsg.UnpackBody(pBody);
+          address = advMsg.GetAddress();
+
+          if (this->verbose)
+            advMsg.PrintBody();
+
+          // Register the advertised address for the topic
+          this->topics.AddAdvAddress(topic, address);
+
+          // Check if we are interested in this topic
+          if (this->topics.Subscribed(topic) &&
+              !this->topics.Connected(topic) &&
+              this->guidStr.compare(rcvdGuid) != 0)
+          {
+            try
+            {
+              this->subscriber->connect(address.c_str());
+              this->topics.SetConnected(topic, true);
+              if (this->verbose)
+                std::cout << "\t* Connected to [" << address << "]\n";
+            }
+            catch (const zmq::error_t& ze)
+            {
+              std::cout << "Error connecting [" << ze.what() << "]\n";
+            }
+          }
+
+          break;
+
+        case ADV_SVC:
+          // Read the address
+          advMsg.UnpackBody(pBody);
+          address = advMsg.GetAddress();
+
+          if (this->verbose)
+            advMsg.PrintBody();
+
+          // Register the advertised address for the service call
+          this->topicsSrvs.AddAdvAddress(topic, address);
+
+          // Check if we are interested in this service call
+          if (this->topicsSrvs.Requested(topic) &&
+              !this->topicsSrvs.Connected(topic) &&
+              this->guidStr.compare(rcvdGuid) != 0)
+          {
+            try
+            {
+              this->srvRequester->connect(address.c_str());
+              this->topicsSrvs.SetConnected(topic, true);
+              if (this->verbose)
+                std::cout << "\t* Connected to [" << address << "]\n";
+            }
+            catch (const zmq::error_t& ze)
+            {
+              std::cout << "Error connecting [" << ze.what() << "]\n";
+            }
+          }
+
+          break;
+
+        case SUB:
+          // Check if I advertise the topic requested
+          if (this->topics.AdvertisedByMe(topic))
+          {
+            // Send to the broadcast socket an ADVERTISE message
+            for (it = this->myAddresses.begin();
+                 it != this->myAddresses.end(); ++it)
+              this->SendAdvertiseMsg(ADV, topic, *it);
+          }
+
+          break;
+
+        case SUB_SVC:
+          // Check if I advertise the service call requested
+          if (this->topicsSrvs.AdvertisedByMe(topic))
+          {
+            // Send to the broadcast socket an ADV_SVC message
+            for (it = this->mySrvAddresses.begin();
+                 it != this->mySrvAddresses.end(); ++it)
+            {
+              this->SendAdvertiseMsg(ADV_SVC, topic, *it);
+            }
+          }
+
+          break;
+
+        default:
+          std::cerr << "Unknown message type [" << header.GetType() << "]\n";
+          break;
+      }
+
+      return 0;
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Send an ADVERTISE message to the discovery socket.
+    /// \param[in] _type ADV or ADV_SVC.
+    /// \param[in] _topic Topic to be advertised.
+    /// \param[in] _address Address to be advertised with the topic.
+    /// \return 0 when success.
+    int SendAdvertiseMsg(uint8_t _type, const std::string &_topic,
+                         const std::string &_address)
+    {
+      assert(_topic != "");
+
+      if (this->verbose)
+        std::cout << "\t* Sending ADV msg [" << _topic << "][" << _address
+                  << "]" << std::endl;
+
+      Header header(TRNSP_VERSION, this->guid, _topic.size(), _topic, _type, 0);
+      AdvMsg advMsg(header, _address.size(), _address);
+
+      char *buffer = new char[advMsg.GetMsgLength()];
+      advMsg.Pack(buffer);
+
+      // Send the data through the UDP broadcast socket
+      try
+      {
+        this->bcastSock->sendTo(buffer, advMsg.GetMsgLength(),
+          this->bcastAddr, this->bcastPort);
+      } catch (SocketException &e) {
+        cerr << "Exception sending an ADV msg: " << e.what() << endl;
+        delete[] buffer;
+        return -1;
+      }
+
+      delete[] buffer;
+      return 0;
+    }
+
+    //  ---------------------------------------------------------------------
+    /// \brief Send a SUBSCRIBE message to the discovery socket.
+    /// \param[in] _type SUB or SUB_SVC.
+    /// \param[in] _topic Topic name.
+    /// \return 0 when success.
+    int SendSubscribeMsg(uint8_t _type, const std::string &_topic)
+    {
+      assert(_topic != "");
+
+      if (this->verbose)
+        std::cout << "\t* Sending SUB msg [" << _topic << "]" << std::endl;
+
+      Header header(TRNSP_VERSION, this->guid, _topic.size(), _topic, _type, 0);
+
+      char *buffer = new char[header.GetHeaderLength()];
+      header.Pack(buffer);
+
+      // Send the data through the UDP broadcast socket
+      try
+      {
+        this->bcastSock->sendTo(buffer, header.GetHeaderLength(),
+          this->bcastAddr, this->bcastPort);
+      } catch (SocketException &e) {
+        cerr << "Exception sending a SUB msg: " << e.what() << endl;
+        delete[] buffer;
+        return -1;
+      }
+
+      delete[] buffer;
+      return 0;
+    }
+
     // Master address
     std::string master;
 
@@ -696,6 +778,8 @@ class Node
     zmq::socket_t *srvRequester;  //  Socket to send service call requests
     zmq::socket_t *srvReplier;    //  Socket to receive service call requests
     std::string tcpEndpoint;
+    std::string srvRequesterEP;
+    std::string srvReplierEP;
     int timeout;                  //  Request timeout
 
     // GUID

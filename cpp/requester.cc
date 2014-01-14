@@ -122,8 +122,10 @@ int main(int argc, char *argv[])
     if (rc != 0)
       std::cout << "srv_request did not work" << std::endl;
 
-    node.SpinOnce();
+    //node.SpinOnce();
   }
+
+  node.Spin();
 
   // Zzzzzz Zzzzzz
   std::cout << "\nPress any key to exit" << std::endl;
