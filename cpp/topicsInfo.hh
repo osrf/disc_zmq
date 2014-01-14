@@ -71,9 +71,11 @@ class TopicsInfo
   /// \brief Destructor.
   virtual ~TopicsInfo()
   {
-    /*Topics_M::iterator it;
-    for (it = this->topicsInfo.begin(); it != this->topicsInfo.end(); ++it)
-      it->second.addresses.clear();*/
+    for (TopicInfo::Topics_M_it it = this->GetTopics().begin();
+      it != this->GetTopics().end(); ++it)
+      delete it->second;
+
+    this->topicsInfo.clear();
   };
 
   //  ---------------------------------------------------------------------
@@ -225,12 +227,11 @@ class TopicsInfo
   /// \param[in] _address New address
   void AddAdvAddress(const std::string &_topic, const std::string &_address)
   {
-    // If we don't have the topic registered, add the new address
+    // If we don't have the topic registered, add a new TopicInfo
     if (!this->HasTopic(_topic))
     {
       TopicInfo *topicInfo = new TopicInfo();
       this->topicsInfo.insert(make_pair(_topic, topicInfo));
-      this->topicsInfo[_topic]->addresses.push_back(_address);
     }
 
     // If we had the topic but not the address, add the new address
