@@ -1,6 +1,7 @@
 #ifndef __PACKET_HH_INCLUDED__
 #define __PACKET_HH_INCLUDED__
 
+#include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <cstddef>
 #include <iostream>
@@ -46,14 +47,12 @@ class Header
 	/// \param[in] _flags Optional flags that you want to include in the header.
 	Header (const uint16_t _version,
           const boost::uuids::uuid &_guid,
-          const uint16_t _topicLength,
           const std::string &_topic,
           const uint8_t _type,
           const uint16_t _flags)
 	{
 		this->SetVersion(_version);
 		this->SetGuid(_guid);
-		this->SetTopicLength(_topicLength);
 		this->SetTopic(_topic);
 		this->SetType(_type);
 		this->SetFlags(_flags);
@@ -125,19 +124,12 @@ class Header
 	}
 
 	//  ---------------------------------------------------------------------
-  /// \brief Set the topic length.
-  /// \param[in] _length Topic length in bytes.
-	void SetTopicLength(const uint16_t _length)
-	{
-		this->topicLength = _length;
-	}
-
-	//  ---------------------------------------------------------------------
   /// \brief Set the topic.
   /// \param[in] _topic Topic name.
 	void SetTopic(const std::string &_topic)
 	{
 		this->topic = _topic;
+		this->topicLength = this->topic.size();
 		this->UpdateHeaderLength();
 	}
 
@@ -208,7 +200,7 @@ class Header
 	//  ---------------------------------------------------------------------
   /// \brief Unserialize the header.
   /// \param[in] _buffer Input buffer containing the data to be unserialized.
-	void Unpack(const char *_buffer)
+	size_t Unpack(const char *_buffer)
 	{
 		// Read the version
     memcpy(&this->version, _buffer, sizeof(this->version));
@@ -239,6 +231,7 @@ class Header
     _buffer += sizeof(this->flags);
 
     this->UpdateHeaderLength();
+    return this->GetHeaderLength();
 	}
 
 	private:
@@ -287,19 +280,16 @@ class AdvMsg
 		//  ---------------------------------------------------------------------
 		/// \brief Constructor.
 		/// \param[in] _header Message header
-		/// \param[in] _addressLength Length of the address string in bytes.
 		/// \param[in] _address ZeroMQ valid address (e.g., "tcp://10.0.0.1:6000").
 		AdvMsg(const Header &_header,
-		       const uint16_t _addressLength,
 		       const std::string &_address)
 		{
 			this->SetHeader(_header);
-			this->SetAddressLength(_addressLength);
 			this->SetAddress(_address);
 			this->UpdateMsgLength();
 		}
 
-		Header GetHeader() const
+		Header& GetHeader()
 		{
 			return this->header;
 		}
@@ -317,16 +307,16 @@ class AdvMsg
 		void SetHeader(const Header &_header)
 		{
 			this->header = _header;
-		}
-
-		void SetAddressLength(const uint16_t _addressLength)
-		{
-			this->addressLength = _addressLength;
+			if (_header.GetType() != ADV && _header.GetType() != ADV_SVC)
+				std::cerr << "You're trying to use a "
+				          << msgTypesStr[_header.GetType()] << " header inside an ADV"
+				          << " or ADV_SVC. Are you sure you want to do this?\n";
 		}
 
 		void SetAddress(const std::string &_address)
 		{
 			this->address = _address;
+			this->addressLength = this->address.size();
 			this->UpdateMsgLength();
 		}
 
@@ -370,6 +360,8 @@ class AdvMsg
       address[this->addressLength] = '\0';
       this->address = address;
 
+      this->UpdateMsgLength();
+
       return sizeof(this->addressLength) + this->address.size();
 		}
 
@@ -380,7 +372,7 @@ class AdvMsg
 		void UpdateMsgLength()
 		{
 			this->msgLength = this->GetHeader().GetHeaderLength() +
-			                     sizeof(this->addressLength) + this->address.size();
+			                  sizeof(this->addressLength) + this->address.size();
 		}
 
 		/// \brief Message header

@@ -696,8 +696,8 @@ class Node
         std::cout << "\t* Sending ADV msg [" << _topic << "][" << _address
                   << "]" << std::endl;
 
-      Header header(TRNSP_VERSION, this->guid, _topic.size(), _topic, _type, 0);
-      AdvMsg advMsg(header, _address.size(), _address);
+      Header header(TRNSP_VERSION, this->guid, _topic, _type, 0);
+      AdvMsg advMsg(header, _address);
 
       char *buffer = new char[advMsg.GetMsgLength()];
       advMsg.Pack(buffer);
@@ -729,7 +729,7 @@ class Node
       if (this->verbose)
         std::cout << "\t* Sending SUB msg [" << _topic << "]" << std::endl;
 
-      Header header(TRNSP_VERSION, this->guid, _topic.size(), _topic, _type, 0);
+      Header header(TRNSP_VERSION, this->guid, _topic, _type, 0);
 
       char *buffer = new char[header.GetHeaderLength()];
       header.Pack(buffer);
