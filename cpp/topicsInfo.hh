@@ -397,6 +397,9 @@ class TopicsInfo
     return true;
   }
 
+  //  ---------------------------------------------------------------------
+  /// \brief Get a reference to the topics map.
+  /// \return Reference to the topic map.
   TopicInfo::Topics_M& GetTopics()
   {
     return this->topicsInfo;
