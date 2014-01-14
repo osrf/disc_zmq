@@ -2,10 +2,11 @@
 #define __TOPICS_INFO_HH_INCLUDED__
 
 #include <algorithm>
+#include <boost/algorithm/string.hpp>
 #include <iostream>
 #include <map>
-#include <queue>
 #include <string>
+#include <vector>
 
 // Info about a topic for pub/sub
 class TopicInfo

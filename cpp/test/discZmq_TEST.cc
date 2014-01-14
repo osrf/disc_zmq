@@ -1,5 +1,5 @@
 #include <limits.h>
-#include "../packet.hh"
+#include "../discZmq.hh"
 #include "gtest/gtest.h"
 
 TEST(PacketTest, Basic)
