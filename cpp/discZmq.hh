@@ -15,6 +15,8 @@
 #include "zmq/zmq.hpp"
 #include "zmq/zmsg.hpp"
 
+#include "include/dns_sd.h"
+
 const int MaxRcvStr = 65536; // Longest string to receive
 const std::string InprocAddr = "inproc://local";
 
@@ -22,12 +24,34 @@ class Node
 {
   public:
 
+    static void DNSSD_API BrowserCallBack(
+      DNSServiceRef           inServiceRef,
+      DNSServiceFlags         inFlags,
+      uint32_t                inIFI,
+      DNSServiceErrorType     inError,
+      const char *            inName,
+      const char *            inType,
+      const char *            inDomain,
+      void *                  inContext
+    )
+    {
+
+    };
+
     //  ---------------------------------------------------------------------
     /// \brief Constructor.
     /// \param[in] _master End point with the master's endpoint.
     /// \param[in] _verbose true for enabling verbose mode.
     Node (std::string _master, bool _verbose)
     {
+      // caguero testing
+      DNSServiceErrorType err;
+      DNSServiceRef gServiceRef = NULL;
+      err = DNSServiceBrowse(&gServiceRef, 0, kDNSServiceInterfaceIndexAny,
+                "_http._tcp", NULL, BrowserCallBack, NULL);
+
+      // end testing
+
       char bindEndPoint[1024];
 
       // Initialize random seed
