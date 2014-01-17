@@ -1,6 +1,7 @@
 #ifndef __NODE_HH_INCLUDED__
 #define __NODE_HH_INCLUDED__
 
+#include <arpa/inet.h>
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/uuid_generators.hpp>
@@ -157,6 +158,40 @@ class Node
       }
     }
 
+    static void DNSSD_API reg_reply(DNSServiceRef sdref,
+                                    const DNSServiceFlags flags,
+                                    DNSServiceErrorType errorCode,
+                                    const char *name,
+                                    const char *regtype,
+                                    const char *domain,
+                                    void *context)
+    {
+      (void)sdref;    // Unused
+      (void)flags;    // Unused
+      (void)context;  // Unused
+      //EXIT_IF_LIBDISPATCH_FATAL_ERROR(errorCode);
+
+      //printtimestamp();
+      printf("Got a reply for service %s.%s%s: ", name, regtype, domain);
+
+      if (errorCode == kDNSServiceErr_NoError)
+      {
+          if (flags & kDNSServiceFlagsAdd)
+            printf("Name now registered and active\n");
+          else
+            printf("Name registration removed\n");
+      }
+      else if (errorCode == kDNSServiceErr_NameConflict)
+      {
+          printf("Name in use, please choose another\n");
+          exit(-1);
+      }
+      else
+          printf("Error %d\n", errorCode);
+
+      if (!(flags & kDNSServiceFlagsMoreComing)) fflush(stdout);
+    }
+
     //  ---------------------------------------------------------------------
     /// \brief Advertise a new service.
     /// \param[in] _topic Topic to be advertised.
@@ -167,9 +202,22 @@ class Node
 
       this->topics.SetAdvertisedByMe(_topic, true);
 
-      std::vector<std::string>::iterator it;
+      /*std::vector<std::string>::iterator it;
       for (it = this->myAddresses.begin(); it != this->myAddresses.end(); ++it)
-        this->SendAdvertiseMsg(ADV, _topic, *it);
+        this->SendAdvertiseMsg(ADV, _topic, *it);*/
+
+      DNSServiceRef *client = NULL;
+      DNSServiceFlags flags = kDNSServiceFlagsDefault;
+      uint32_t opinterface = kDNSServiceInterfaceIndexAny;
+      std::string nam = _topic;
+      std::string typ = "Node";
+      char *host = NULL;
+      char *dom = NULL;
+      uint16_t registerPort = htons(4448);
+      char *txt = NULL;
+      uint16_t txtLen = 0;
+      DNSServiceRegister(client, flags, opinterface, nam.c_str(), typ.c_str(),
+        dom, host, registerPort, txtLen, txt, reg_reply, NULL);
 
       return 0;
     }
