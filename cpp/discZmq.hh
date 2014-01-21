@@ -16,261 +16,10 @@
 #include "zmq/zmq.hpp"
 #include "zmq/zmsg.hpp"
 
-#include <avahi-compat-libdns_sd/dns_sd.h>
+#include <dns_sd.h>
 
 const int MaxRcvStr = 65536; // Longest string to receive
 const std::string InprocAddr = "inproc://local";
-
-
-
-
-/*#include <stdio.h>
-#include <assert.h>
-#include <stdlib.h>
-#include <time.h>
-
-#include <avahi-client/client.h>
-#include <avahi-client/lookup.h>
-#include <avahi-client/publish.h>
-
-#include <avahi-common/alternative.h>
-#include <avahi-common/simple-watch.h>
-#include <avahi-common/malloc.h>
-#include <avahi-common/error.h>
-#include <avahi-common/timeval.h>
-
-
-
-static AvahiEntryGroup *group = NULL;
-static AvahiSimplePoll *simple_poll = NULL;
-static char *name = NULL;
-
-static void create_services(AvahiClient *c);
-
-void resolve_callback(AvahiServiceResolver *r,
-                      AVAHI_GCC_UNUSED AvahiIfIndex interface,
-                      AVAHI_GCC_UNUSED AvahiProtocol protocol,
-                      AvahiResolverEvent event,
-                      const char *name,
-                      const char *type,
-                      const char *domain,
-                      const char *host_name,
-                      const AvahiAddress *address,
-                      uint16_t port,
-                      AvahiStringList *txt,
-                      AvahiLookupResultFlags flags,
-                      AVAHI_GCC_UNUSED void* userdata)
-{
-  assert(r);
-
-  // Called whenever a service has been resolved successfully or timed out
-  switch (event) {
-      case AVAHI_RESOLVER_FAILURE:
-          fprintf(stderr, "(Resolver) Failed to resolve service '%s' of type '%s' in domain '%s': %s\n", name, type, domain, avahi_strerror(avahi_client_errno(avahi_service_resolver_get_client(r))));
-          break;
-
-      case AVAHI_RESOLVER_FOUND: {
-          char a[AVAHI_ADDRESS_STR_MAX], *t;
-
-          fprintf(stderr, "Service '%s' of type '%s' in domain '%s':\n", name, type, domain);
-
-          avahi_address_snprint(a, sizeof(a), address);
-          t = avahi_string_list_to_string(txt);
-          fprintf(stderr,
-                  "\t%s:%u (%s)\n"
-                  "\tTXT=%s\n"
-                  "\tcookie is %u\n"
-                  "\tis_local: %i\n"
-                  "\tour_own: %i\n"
-                  "\twide_area: %i\n"
-                  "\tmulticast: %i\n"
-                  "\tcached: %i\n",
-                  host_name, port, a,
-                  t,
-                  avahi_string_list_get_service_cookie(txt),
-                  !!(flags & AVAHI_LOOKUP_RESULT_LOCAL),
-                  !!(flags & AVAHI_LOOKUP_RESULT_OUR_OWN),
-                  !!(flags & AVAHI_LOOKUP_RESULT_WIDE_AREA),
-                  !!(flags & AVAHI_LOOKUP_RESULT_MULTICAST),
-                  !!(flags & AVAHI_LOOKUP_RESULT_CACHED));
-
-          avahi_free(t);
-      }
-  }
-
-  avahi_service_resolver_free(r);
-}
-
-void browse_callback(AvahiServiceBrowser *b,
-                     AvahiIfIndex interface,
-                     AvahiProtocol protocol,
-                     AvahiBrowserEvent event,
-                     const char *type,
-                     const char *domain,
-                     AVAHI_GCC_UNUSED AvahiLookupResultFlags flags,
-                     void* userdata)
-{
-
-  AvahiClient *c = (AvahiClient *) userdata;
-  assert(b);
-
-  AvahiLookupFlags moreFlags;
-
-  // Called whenever a new services becomes available on the LAN or is removed from the LAN
-
-  switch (event) {
-      case AVAHI_BROWSER_FAILURE:
-
-          fprintf(stderr, "(Browser) %s\n", avahi_strerror(avahi_client_errno(avahi_service_browser_get_client(b))));
-          avahi_simple_poll_quit(simple_poll);
-          return;
-
-      case AVAHI_BROWSER_NEW:
-          fprintf(stderr, "(Browser) NEW: service '%s' of type '%s' in domain '%s'\n", name, type, domain);
-
-          // We ignore the returned resolver object. In the callback
-          //   function we free it. If the server is terminated before
-          //   the callback function is called the server will free
-          //   the resolver for us.
-
-          if (!(avahi_service_resolver_new(c, interface, protocol, name, type, domain, AVAHI_PROTO_UNSPEC, moreFlags, resolve_callback, c)))
-              fprintf(stderr, "Failed to resolve service '%s': %s\n", name, avahi_strerror(avahi_client_errno(c)));
-
-          break;
-
-      case AVAHI_BROWSER_REMOVE:
-          fprintf(stderr, "(Browser) REMOVE: service '%s' of type '%s' in domain '%s'\n", name, type, domain);
-          break;
-
-      case AVAHI_BROWSER_ALL_FOR_NOW:
-      case AVAHI_BROWSER_CACHE_EXHAUSTED:
-          fprintf(stderr, "(Browser) %s\n", event == AVAHI_BROWSER_CACHE_EXHAUSTED ? "CACHE_EXHAUSTED" : "ALL_FOR_NOW");
-          break;
-  }
-}
-
-void entry_group_callback(AvahiEntryGroup *g, AvahiEntryGroupState state, AVAHI_GCC_UNUSED void *userdata)
-{
-  assert(g == group || group == NULL);
-  group = g;
-
-  // Called whenever the entry group state changes
-
-  switch (state) {
-      case AVAHI_ENTRY_GROUP_ESTABLISHED :
-          // The entry group has been established successfully
-          fprintf(stderr, "Service '%s' successfully established.\n", name);
-          break;
-
-      case AVAHI_ENTRY_GROUP_COLLISION : {
-          char *n;
-
-          // A service name collision with a remote service
-          // happened. Let's pick a new name
-          n = avahi_alternative_service_name(name);
-          avahi_free(name);
-          name = n;
-
-          fprintf(stderr, "Service name collision, renaming service to '%s'\n", name);
-
-          // And recreate the services
-          create_services(avahi_entry_group_get_client(g));
-          break;
-      }
-
-      case AVAHI_ENTRY_GROUP_FAILURE :
-
-          fprintf(stderr, "Entry group failure: %s\n", avahi_strerror(avahi_client_errno(avahi_entry_group_get_client(g))));
-
-          // Some kind of failure happened while we were registering our services
-          avahi_simple_poll_quit(simple_poll);
-          break;
-
-      case AVAHI_ENTRY_GROUP_UNCOMMITED:
-      case AVAHI_ENTRY_GROUP_REGISTERING:
-          ;
-  }
-}
-
-void create_services(AvahiClient *c)
-{
-  char *n, r[128];
-  int ret;
-  assert(c);
-  AvahiPublishFlags flags = AVAHI_PUBLISH_USE_MULTICAST;
-
-  // If this is the first time we're called, let's create a new
-  // entry group if necessary
-
-  if (!group)
-  {
-    std::cout << "Group is null\n";
-    if (!(group = avahi_entry_group_new(c, entry_group_callback, NULL))) {
-        fprintf(stderr, "avahi_entry_group_new() failed: %s\n", avahi_strerror(avahi_client_errno(c)));
-        return;
-    }
-  }
-
-  // If the group is empty (either because it was just created, or
-  // because it was reset previously, add our entries.
-
-  if (avahi_entry_group_is_empty(group)) {
-      fprintf(stderr, "Adding service '%s'\n", name);
-
-      // Create some random TXT data
-      snprintf(r, sizeof(r), "random=%i", rand());
-
-      // We will now add two services and one subtype to the entry
-      // group. The two services have the same name, but differ in
-      // the service type (IPP vs. BSD LPR). Only services with the
-      // same name should be put in the same entry group.
-
-      // Add the service for IPP
-      if ((ret = avahi_entry_group_add_service(group, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, flags, name, "_ros._tcp", NULL, NULL, 2651, "test=blah", r, NULL)) < 0) {
-
-          if (ret == AVAHI_ERR_COLLISION)
-          {
-            std::cerr << "Error 1, collision\n";
-            return;
-          }
-
-          fprintf(stderr, "Failed to add _ros._tcp service: %s\n", avahi_strerror(ret));
-          return;
-      }
-
-      // Add an additional (hypothetic) subtype
-      // if ((ret = avahi_entry_group_add_service_subtype(group, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, flags, name, "_ros._tcp", NULL, "_magic._sub.ros._tcp") < 0)) {
-      //    fprintf(stderr, "Failed to add subtype _magic._sub._printer._tcp: %s\n", avahi_strerror(ret));
-      //   return;
-      //}
-
-      // Tell the server to register the service
-      if ((ret = avahi_entry_group_commit(group)) < 0) {
-          fprintf(stderr, "Failed to commit entry group: %s\n", avahi_strerror(ret));
-          return;
-      }
-  }
-
-  return;
-
-//collision:
-
-    // A service name collision with a local service happened. Let's
-    // pick a new name
-//    n = avahi_alternative_service_name(name);
-  //  avahi_free(name);
-   // name = n;
-
-   // fprintf(stderr, "Service name collision, renaming service to '%s'\n", name);
-
-  //  avahi_entry_group_reset(group);
-
-  //  create_services(c);
-   // return;
-
-//fail:
- //   avahi_simple_poll_quit(simple_poll);
-}*/
 
 // DNS_SD
 #define LONG_TIME 100000000
@@ -278,10 +27,10 @@ void create_services(AvahiClient *c)
 static volatile int stopNow = 0;
 static volatile int timeOut = LONG_TIME;
 
+//  ---------------------------------------------------------------------
 void HandleEvents(DNSServiceRef serviceRef)
 {
   int dns_sd_fd = DNSServiceRefSockFD(serviceRef);
-  int nfds = dns_sd_fd + 1;
   fd_set readfds;
   struct timeval tv;
   int result;
@@ -292,7 +41,7 @@ void HandleEvents(DNSServiceRef serviceRef)
     FD_SET(dns_sd_fd, &readfds);
     tv.tv_sec = timeOut;
     tv.tv_usec = 0;
-    result = select(nfds, &readfds, (fd_set*)NULL, (fd_set*)NULL, &tv);
+    result = select(1, &readfds, (fd_set*)NULL, (fd_set*)NULL, &tv);
     if (result > 0)
     {
       DNSServiceErrorType err = kDNSServiceErr_NoError;
@@ -309,6 +58,7 @@ void HandleEvents(DNSServiceRef serviceRef)
   }
 }
 
+//  ---------------------------------------------------------------------
 static void MyRegisterCallBack(DNSServiceRef service,
                                DNSServiceFlags flags,
                                DNSServiceErrorType errorCode,
@@ -323,70 +73,65 @@ static void MyRegisterCallBack(DNSServiceRef service,
   if (errorCode != kDNSServiceErr_NoError)
     std::cerr << "MyRegisterCallBack() returned " << errorCode << std::endl;
   else
-    std::cout << "REGISTER " << name << " " << type << "." << domain << "\n";
-}
-
-static DNSServiceErrorType MyDNSServiceRegister()
-{
-  DNSServiceErrorType error;
-  DNSServiceRef serviceRef;
-
-  error = DNSServiceRegister(&serviceRef,
-                             0,
-                             0,
-                             "Not a real page",
-                             "_http._tcp",
-                             "",
-                             NULL,
-                             htons(9092),
-                             0,
-                             NULL,
-                             MyRegisterCallBack,
-                             NULL);
-
-  if (error == kDNSServiceErr_NoError)
-  {
-    HandleEvents(serviceRef);
-    DNSServiceRefDeallocate(serviceRef);
-  }
-
-  return error;
+    std::cout << "REGISTER " << name << " " << type << domain << "\n";
 }
 
 
 class Node
 {
   public:
-    /*void client_callback(AvahiClient *c, AvahiClientState state,
-                         AVAHI_GCC_UNUSED void * userdata)
+
+    //  ---------------------------------------------------------------------
+    DNSServiceErrorType MyDNSServiceRegister(const std::string &_topic)
     {
-      assert(c);
+      DNSServiceErrorType error;
+      DNSServiceRef serviceRef;
 
-      // Called whenever the client or server state changes
+      // Create the DNS TXT register data
+      char buffer[512];
+      TXTRecordRef txtRecord;
 
-      if (state == AVAHI_CLIENT_FAILURE) {
-        fprintf(stderr, "Server connection failure: %s\n", avahi_strerror(avahi_client_errno(c)));
-        avahi_simple_poll_quit(simple_poll);
-      }
-      else if (state = AVAHI_CLIENT_S_RUNNING)
+      TXTRecordCreate(&txtRecord, sizeof(buffer), buffer);
+      // Create a TXT record for the topic name
+      TXTRecordSetValue(&txtRecord, "t", _topic.size(), _topic.c_str());
+      // Create a TXT record for the GUID
+      TXTRecordSetValue(&txtRecord, "g", this->guidStr.size(),
+        this->guidStr.c_str());
+      // Create a TXT record for the current addresses
+      std::string addresses = "";
+      std::vector<std::string>::iterator it;
+      for (it = this->myAddresses.begin(); it != this->myAddresses.end(); ++it)
+        addresses += *it + " ";
+      TXTRecordSetValue(&txtRecord, "a", addresses.size(),
+        addresses.c_str());
+      std::cout << "Addresses: " << addresses << std::endl;
+
+      // Register the service
+      error = DNSServiceRegister(&serviceRef,
+                                 0,
+                                 0,
+                                 "pub",
+                                 "_ros._tcp",
+                                 "",
+                                 NULL,
+                                 htons(9092),
+                                 //txtRecord.size(),
+                                 //txtRecord.data(),
+                                 TXTRecordGetLength(&txtRecord),
+                                 TXTRecordGetBytesPtr(&txtRecord),
+                                 MyRegisterCallBack,
+                                 NULL);
+
+      TXTRecordDeallocate(&txtRecord);
+
+      if (error == kDNSServiceErr_NoError)
       {
-        std::cout << "Running\n";
-        // The server has startup successfully and registered its host
-        // name on the network, so it's time to create our services
-        create_services(c);
+        HandleEvents(serviceRef);
+        DNSServiceRefDeallocate(serviceRef);
       }
-      else if (state = AVAHI_CLIENT_S_REGISTERING)
-      {
-        std::cout << "Registering\n";
-        // The server records are now being established. This
-        // might be caused by a host name change. We need to wait
-        // for our own records to register until the host name is
-        // properly esatblished.
 
-        if (group)
-            avahi_entry_group_reset(group);
-      }
-    }*/
+      return error;
+    }
 
     //  ---------------------------------------------------------------------
     /// \brief Constructor.
@@ -513,30 +258,11 @@ class Node
       for (it = this->myAddresses.begin(); it != this->myAddresses.end(); ++it)
         this->SendAdvertiseMsg(ADV, _topic, *it);*/
 
-      /*AvahiClient *client = NULL;
-      int error;
-      struct timeval tv;
-      AvahiClientFlags flags;
-
-      // Allocate main loop object
-      if (!(simple_poll = avahi_simple_poll_new())) {
-          fprintf(stderr, "Failed to create simple poll object.\n");
-          return 1;
+      if (int error = this->MyDNSServiceRegister(_topic) != 0)
+      {
+        std::cout << "Error. ServiceRegister() returned " << error << std::endl;
+        return error;
       }
-
-      name = avahi_strdup("MegaPrinter");
-
-      // Allocate a new client
-      client = avahi_client_new(avahi_simple_poll_get(simple_poll), flags, this->client_callback, NULL, &error);
-
-      // Check wether creating the client object succeeded
-      if (!client) {
-          fprintf(stderr, "Failed to create client: %s\n", avahi_strerror(error));
-          return 1;
-      }*/
-
-      DNSServiceErrorType error = MyDNSServiceRegister();
-      std::cout << "ServiceRegister() returned " << error << std::endl;
 
       return 0;
     }
@@ -609,7 +335,9 @@ class Node
       this->subscriber->setsockopt(ZMQ_SUBSCRIBE, _topic.data(), _topic.size());
 
       // Discover the list of nodes that publish on the topic
-      return this->SendSubscribeMsg(SUB, _topic);
+      //return this->SendSubscribeMsg(SUB, _topic);
+
+      return 0;
     }
 
     //  ---------------------------------------------------------------------
