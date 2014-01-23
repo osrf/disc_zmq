@@ -5,9 +5,25 @@ Testing multiple instances of mDNS clients.
 """
 import argparse
 import subprocess
+from threading import Thread
+
+def run_dns_sd(name, _service, _domain, _port):
+    '''
+    Run a single dns-sd instance.
+    '''
+    try:
+        # Updload the text file into the VRC Portal
+        cmd = ('dns-sd -R ' + name + ' ' + _service + ' ' +
+               _domain + ' ' + str(_port))
+
+        subprocess.check_call(cmd.split())
+
+    except Exception, excep:
+        print ('Error in dns-sd operation : %s' % repr(excep))
 
 def go(_prefix_name, _service, _domain, _port, _n):
     '''
+    Run multiple dns-sd instances.
     '''
     print ('Registering %s service/s:' % _n)
     print ('\t Prefix_name: %s' % _prefix_name)
@@ -15,16 +31,8 @@ def go(_prefix_name, _service, _domain, _port, _n):
     print ('\t Port: %d' % _port)
 
     for i in range(int(_n)):
-        try:
-            # Updload the text file into the VRC Portal
-            cmd = ('dns-sd -R ' + _prefix_name + str(i) + ' ' + _service + ' ' +
-                   _domain + ' ' + str(_port))
-
-            subprocess.check_call(cmd.split())
-
-        except Exception, excep:
-            print ('Error in dns-sd operation : %s'
-                   % repr(excep))
+        Thread(target=run_dns_sd,
+               args=[_prefix_name + str(i), _service, _domain, _port]).start()
         _port = _port + 1
 
 
