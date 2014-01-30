@@ -22,3 +22,15 @@ uint16_t nnet_strlen(const char *str, const uint16_t max_len)
   return (uint16_t)(c - str);
 }
 
+int nnet_streq(const char *a, const char *b)
+{
+  while (*a && *b)
+  {
+    if (*a != *b)
+      return NNET_FALSE;
+    *a++;
+    *b++;
+  }
+  return NNET_TRUE;
+}
+

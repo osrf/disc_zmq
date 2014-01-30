@@ -1,6 +1,10 @@
 #include "nnet_ip.h"
 #include "nnet_utils.h"
 
+#ifdef NNET_CONFIG_CONSOLE_AVAIL
+  #include <stdio.h>
+#endif
+
 void nnet_ip_insert_checksum(nnet_ip_header_t *header)
 {
   header->checksum = 0;

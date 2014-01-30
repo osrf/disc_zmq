@@ -1,5 +1,12 @@
 #include "nnet_udp.h"
 #include "nnet_config.h"
+#include "nnet_eth.h"
+#include "nnet_utils.h"
+#include "nnet_ip.h"
+
+#ifdef NNET_CONFIG_CONSOLE_AVAIL
+  #include <stdio.h>
+#endif
 
 void nnet_udp_init_header(nnet_udp_header_t *u,
                           const uint8_t *dest_mac,
@@ -10,7 +17,7 @@ void nnet_udp_init_header(nnet_udp_header_t *u,
 {
   uint8_t i;
   // init ethernet frame
-  for (i = 0; i < NNET_ETH_MAC_SIZE; i++)
+  for (i = 0; i < NNET_ETH_MAC_LEN; i++)
   {
     u->ip.eth.dest_addr[i]   = dest_mac[i];  //NNET_MDNS_IPV4_MAC[i];
     u->ip.eth.source_addr[i] = nnet_config_mac_addr[i];
@@ -42,11 +49,11 @@ void nnet_udp_print_packet(nnet_udp_header_t *u)
 {
   uint16_t i = 0; 
   printf("src: %s:%d\n", 
-         smdns_inet_ntoa(u->ip.source_addr), osrf_htons(u->source_port));
+         nnet_ip_ntoa(u->ip.source_addr), nnet_htons(u->source_port));
   printf("dst: %s:%d\n", 
-         smdns_inet_ntoa(u->ip.dest_addr), osrf_htons(u->dest_port));
-  printf("ip checksum: 0x%04x\n", osrf_htons(u->ip.checksum));
-  const uint16_t udp_payload_len = osrf_htons(u->ip.len) - 20 - 8;
+         nnet_ip_ntoa(u->ip.dest_addr), nnet_htons(u->dest_port));
+  printf("ip checksum: 0x%04x\n", nnet_htons(u->ip.checksum));
+  const uint16_t udp_payload_len = nnet_htons(u->ip.len) - 20 - 8;
   printf("udp payload length: %d\n", udp_payload_len);
   printf("udp payload (hex):\n000:  ");
   uint8_t *payload = (uint8_t *)u + sizeof(*u); // don't do this at home, kids
