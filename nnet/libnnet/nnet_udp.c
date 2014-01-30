@@ -56,7 +56,7 @@ void nnet_udp_print_packet(nnet_udp_header_t *u)
   const uint16_t udp_payload_len = nnet_htons(u->ip.len) - 20 - 8;
   printf("udp payload length: %d\n", udp_payload_len);
   printf("udp payload (hex):\n000:  ");
-  uint8_t *payload = (uint8_t *)u + sizeof(*u); // don't do this at home, kids
+  uint8_t *payload = nnet_udp_payload(u);
   for (i = 0; i < udp_payload_len; i++)
   {
     printf("%02x ", payload[i]);
@@ -69,3 +69,13 @@ void nnet_udp_print_packet(nnet_udp_header_t *u)
 }
 #endif
 
+void nnet_udp_tx(nnet_udp_header_t *udp)
+{
+  const uint16_t udp_payload_len = nnet_htons(udp->len) - 8;
+  nnet_eth_tx((uint8_t *)udp, sizeof(nnet_udp_header_t) + udp_payload_len);
+}
+
+uint8_t *nnet_udp_payload(nnet_udp_header_t *u)
+{
+  return (uint8_t *)u + sizeof(*u); // don't do this at home, kids
+}

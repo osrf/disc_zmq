@@ -8,14 +8,14 @@ AR = $(TC)ar
 BIN = ../bin
 CC_FLAGS = -std=c99 $(CONSOLE_DEBUG)
 
-LIB = $(BIN)/libsmdns.a
+LIB = $(BIN)/libnnet.a
 
 default: depend $(LIB)
 
 depend:
 	g++ $(CFLAGS) -MM $(SRC) >depend
 
-SRC = nnet_config.c nnet_utils.c nnet_eth.c nnet_ip.c nnet_udp.c nnet_mdns.c
+SRC = nnet_buf.c nnet_config.c nnet_utils.c nnet_eth.c nnet_ip.c nnet_udp.c nnet_mdns.c
 OBJ = $(SRC:.c=.o)
 
 .c.o:

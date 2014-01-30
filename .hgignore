@@ -2,3 +2,6 @@
 c/main
 c/bin
 cpp/build
+.o
+nnet/bin
+libnnet/depend

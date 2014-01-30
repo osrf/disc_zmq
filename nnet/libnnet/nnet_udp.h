@@ -22,6 +22,9 @@ void nnet_udp_init_header(nnet_udp_header_t *u,
                           const uint16_t source_port,
                           const uint16_t payload_len);
 
+void nnet_udp_tx(nnet_udp_header_t *udp);
+uint8_t *nnet_udp_payload(nnet_udp_header_t *udp);
+
 #ifdef NNET_CONFIG_CONSOLE_AVAIL
 void nnet_udp_print_packet(nnet_udp_header_t *u);
 #endif

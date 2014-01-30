@@ -15,10 +15,7 @@ static const uint16_t NNET_MDNS_UDP_PORT = 5353;
 /////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 
-void smdns_init() { }
-void smdns_fini() { }
-
-void smdns_send_query(const char *name)
+void nnet_mdns_send_query(const char *name)
 {
   const uint16_t name_len = nnet_strlen(name, NNET_BUF_TX_SIZE - 40);
 #ifdef NNET_CONFIG_CONSOLE_AVAIL

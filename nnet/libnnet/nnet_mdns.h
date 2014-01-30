@@ -7,7 +7,7 @@
 void nnet_mdns_init();
 void nnet_mdns_fini();
 void nnet_mdns_send_query(const char *name);
-void nnet_mdns_rx_frame(const uint8_t *data, const uint16_t len);
+void nnet_mdns_rx_eth_frame(const uint8_t *data, const uint16_t len);
 
 typedef struct
 {
