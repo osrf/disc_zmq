@@ -4,10 +4,16 @@
 #include "common.h"
 #include "nnet_config.h"
 #include "nnet_utils.h"
+#include <unistd.h>
+
+int g_raw_sock = -1;
 
 void nnet_eth_tx(const uint8_t *data, const uint16_t len)
 {
   printf("nnet_eth_tx: %d bytes\n", len);
+  send_raw(g_raw_sock, data, len);
+}
+#if 0
   for (int i = 0; i < len; i++)
   {
     printf("%02x ", data[i]);
@@ -21,10 +27,14 @@ void nnet_eth_tx(const uint8_t *data, const uint16_t len)
   //nnet_mdns_rx_eth_frame(data, len);
   // todo: it would be cool to connect two nnet instances through a pipe.
 }
+#endif
 
 int main(int argc, char ** argv)
 {
-  nnet_config_ip_addr = nnet_htonl(0x0a0a0102);
+  // get a raw socket
+  g_raw_sock = open_raw_socket("lo");
+
+  nnet_config_ip_addr = 0x0a0a0102;
   nnet_config_set_mac_addr(0,1,2,3,4,5);
   nnet_config_fqdn = "some_machine.local";
   printf("hello world\n");
@@ -32,10 +42,11 @@ int main(int argc, char ** argv)
   uint8_t tx_pkt[1024];
   nnet_udp_header_t *u = (nnet_udp_header_t *)tx_pkt;
   const uint8_t dest_mac[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
-  nnet_udp_init_header(u, dest_mac, 0x0a0a0101, 0x1234, 0x5678, 20);
+  nnet_udp_init_header(u, dest_mac, 0x0a0a0101, 1234, 5678, 20);
   uint8_t *payload = nnet_udp_payload(u);
   for (int i = 0; i < 20; i++)
     payload[i] = i;
   nnet_udp_tx(u);
+  close(g_raw_sock);
 }
 

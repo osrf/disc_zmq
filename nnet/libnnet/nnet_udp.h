@@ -4,8 +4,6 @@
 #include "nnet_ip.h"
 #include "nnet_config.h"
 
-static const uint8_t  NNET_IP_PROTO_UDP = 0x11;
-
 typedef struct
 {
   nnet_ip_header_t ip;

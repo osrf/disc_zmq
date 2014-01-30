@@ -17,7 +17,7 @@ TEST_SRC = $(TESTS:=.c)
 #.c.:
 #	$(CC) $(CC_FLAGS) -c $< -o $@
 
-$(TESTS):
+$(TESTS): $(TEST_SRC) common.c common.h
 	@echo $@ 
 	$(CC) $(CC_FLAGS) -o $@ $@.c common.c -lnnet
 
@@ -26,5 +26,5 @@ $(TESTS):
 #	$(AR) cr $(LIB) $(OBJ)
 
 clean:
-	#-rm *.o depend $(LIB)
+	-rm $(TESTS)
 

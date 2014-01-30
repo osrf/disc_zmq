@@ -22,10 +22,13 @@ typedef struct
   uint32_t dest_addr    : 32;
 } __attribute__((packed)) nnet_ip_header_t;
 
-static const uint16_t NNET_IP_ETHERTYPE = 0x0800;
-static const uint8_t  NNET_IP_HEADER_LEN = 5;
-static const uint8_t  NNET_IP_VERSION = 4;
-static const uint16_t NNET_IP_DONT_FRAGMENT = 0x4000;
+#define NNET_IP_ETHERTYPE      0x0800
+#define NNET_IP_HEADER_LEN     5
+#define NNET_IP_VERSION        4
+#define NNET_IP_DONT_FRAGMENT  0x4000
+
+#define NNET_IP_PROTO_ICMP  0x01
+#define NNET_IP_PROTO_UDP   0x11
 
 void nnet_ip_insert_checksum(nnet_ip_header_t *header);
 
