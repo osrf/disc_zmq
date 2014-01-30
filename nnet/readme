@@ -1,0 +1,3 @@
+nnet = nano networking stack
+
+goal: fairly extreme portability, with zero dependencies
