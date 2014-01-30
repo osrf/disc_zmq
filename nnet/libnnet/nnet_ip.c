@@ -40,3 +40,7 @@ const char *nnet_ip_ntoa(const uint32_t addr)
 
 #endif
 
+void nnet_ip_rx(const uint8_t *data, const uint16_t data_len)
+{
+}
+

@@ -22,7 +22,6 @@ typedef struct
   uint32_t dest_addr    : 32;
 } __attribute__((packed)) nnet_ip_header_t;
 
-#define NNET_IP_ETHERTYPE      0x0800
 #define NNET_IP_HEADER_LEN     5
 #define NNET_IP_VERSION        4
 #define NNET_IP_DONT_FRAGMENT  0x4000
@@ -35,6 +34,8 @@ void nnet_ip_insert_checksum(nnet_ip_header_t *header);
 #ifdef NNET_CONFIG_CONSOLE_AVAIL
 const char *nnet_ip_ntoa(const uint32_t addr);
 #endif
+
+void nnet_ip_rx(const uint8_t *data, const uint16_t data_len);
 
 #endif
 

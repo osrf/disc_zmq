@@ -17,12 +17,12 @@ typedef struct
   uint32_t target_proto_addr;
 } __attribute__((packed)) nnet_arp_packet_t;
 
-#define NNET_ARP_ETHERTYPE    0x0806
 #define NNET_ARP_HW_ETHERNET  1
 #define NNET_ARP_PROTO_IPV4   0x0800
 #define NNET_ARP_OP_REQUEST   1
 #define NNET_ARP_OP_RESPONSE  2
 
+void nnet_arp_rx(const uint8_t *data, const uint16_t data_len);
 
 #endif
 
