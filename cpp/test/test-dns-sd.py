@@ -7,6 +7,7 @@ import argparse
 import subprocess
 from threading import Thread
 
+
 def run_dns_sd(name, _service, _domain, _port):
     '''
     Run a single dns-sd instance.
@@ -20,6 +21,7 @@ def run_dns_sd(name, _service, _domain, _port):
 
     except Exception, excep:
         print ('Error in dns-sd operation : %s' % repr(excep))
+
 
 def go(_prefix_name, _service, _domain, _port, _n):
     '''
@@ -55,7 +57,6 @@ if __name__ == '__main__':
     arg_domain = args.domain
     arg_port = args.port
     arg_n = args.n
-
 
     # Attach the cloudsims!
     go(arg_prefix_name, arg_service, arg_domain, int(arg_port), arg_n)

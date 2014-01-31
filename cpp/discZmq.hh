@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2012-2014 Open Source Robotics Foundation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+*/
+
 #ifndef __NODE_HH_INCLUDED__
 #define __NODE_HH_INCLUDED__
 
@@ -6,8 +23,10 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <dns_sd.h>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "netUtils.hh"
 #include "packet.hh"
@@ -16,9 +35,8 @@
 #include "zmq/zmq.hpp"
 #include "zmq/zmsg.hpp"
 
-#include <dns_sd.h>
 
-const int MaxRcvStr = 65536; // Longest string to receive
+const int MaxRcvStr = 65536;  // Longest string to receive
 const std::string InprocAddr = "inproc://local";
 
 // DNS_SD
@@ -41,7 +59,8 @@ void HandleEvents(DNSServiceRef serviceRef)
     FD_SET(dns_sd_fd, &readfds);
     tv.tv_sec = timeOut;
     tv.tv_usec = 0;
-    result = select(1, &readfds, (fd_set*)NULL, (fd_set*)NULL, &tv);
+    result = select(1, &readfds, reinterpret_cast<fd_set*>(NULL),
+      reinterpret_cast<fd_set*>(NULL), &tv);
     if (result > 0)
     {
       DNSServiceErrorType err = kDNSServiceErr_NoError;
@@ -80,7 +99,6 @@ static void MyRegisterCallBack(DNSServiceRef service,
 class Node
 {
   public:
-
     //  ---------------------------------------------------------------------
     DNSServiceErrorType MyDNSServiceRegister(const std::string &_topic)
     {
@@ -115,8 +133,8 @@ class Node
                                  "",
                                  NULL,
                                  htons(9092),
-                                 //txtRecord.size(),
-                                 //txtRecord.data(),
+                                 // txtRecord.size(),
+                                 // txtRecord.data(),
                                  TXTRecordGetLength(&txtRecord),
                                  TXTRecordGetBytesPtr(&txtRecord),
                                  MyRegisterCallBack,
@@ -137,12 +155,12 @@ class Node
     /// \brief Constructor.
     /// \param[in] _master End point with the master's endpoint.
     /// \param[in] _verbose true for enabling verbose mode.
-    Node (std::string _master, bool _verbose)
+    Node(std::string _master, bool _verbose)
     {
       char bindEndPoint[1024];
 
       // Initialize random seed
-      srand (time(NULL));
+      srand(time(NULL));
 
       // Required 0mq minimum version
       s_version_assert(2, 1);
@@ -183,7 +201,7 @@ class Node
         this->srvReplierEP = bindEndPoint;
         this->mySrvAddresses.push_back(this->srvReplierEP);
       }
-      catch (const zmq::error_t& ze)
+      catch(const zmq::error_t& ze)
       {
          std::cerr << "Error: " << ze.what() << std::endl;
          this->Fini();
@@ -215,7 +233,7 @@ class Node
       this->SendPendingAsyncSrvCalls();
 
       //  Poll socket for a reply, with timeout
-      zmq::pollitem_t items [] = {
+      zmq::pollitem_t items[] = {
         { *this->subscriber, 0, ZMQ_POLLIN, 0 },
         { *this->srvReplier, 0, ZMQ_POLLIN, 0 },
         { 0, this->bcastSock->sockDesc, ZMQ_POLLIN, 0 },
@@ -224,13 +242,13 @@ class Node
       zmq::poll(&items[0], sizeof(items) / sizeof(items[0]), this->timeout);
 
       //  If we got a reply, process it
-      if (items [0].revents & ZMQ_POLLIN)
+      if (items[0].revents & ZMQ_POLLIN)
         this->RecvTopicUpdates();
-      else if (items [1].revents & ZMQ_POLLIN)
+      else if (items[1].revents & ZMQ_POLLIN)
         this->RecvSrvRequest();
-      else if (items [2].revents & ZMQ_POLLIN)
+      else if (items[2].revents & ZMQ_POLLIN)
         this->RecvDiscoveryUpdates();
-      else if (items [3].revents & ZMQ_POLLIN)
+      else if (items[3].revents & ZMQ_POLLIN)
         this->RecvSrvReply();
     }
 
@@ -335,7 +353,7 @@ class Node
       this->subscriber->setsockopt(ZMQ_SUBSCRIBE, _topic.data(), _topic.size());
 
       // Discover the list of nodes that publish on the topic
-      //return this->SendSubscribeMsg(SUB, _topic);
+      // return this->SendSubscribeMsg(SUB, _topic);
 
       return 0;
     }
@@ -436,20 +454,21 @@ class Node
         std::cout << "\nRequest (" << _topic << ")" << std::endl;
         msg.dump();
       }
-      msg.send (*this->srvRequester);
+      msg.send(*this->srvRequester);
 
       // Poll socket for a reply, with timeout
-      zmq::pollitem_t items [] = { { *this->srvRequester, 0, ZMQ_POLLIN, 0 } };
+      zmq::pollitem_t items[] = { { *this->srvRequester, 0, ZMQ_POLLIN, 0 } };
       zmq::poll(items, 1, this->timeout);
 
       //  If we got a reply, process it
-      if (items [0].revents & ZMQ_POLLIN)
+      if (items[0].revents & ZMQ_POLLIN)
       {
-        zmsg *reply = new zmsg (*this->srvRequester);
+        zmsg *reply = new zmsg(*this->srvRequester);
 
         std::string((char*)reply->pop_front().c_str());
         std::string((char*)reply->pop_front().c_str());
-        _response = std::string((char*)reply->pop_front().c_str());
+        _response =
+            std::string((char*)reply->pop_front().c_str());
 
         return 0;
       }
@@ -499,15 +518,15 @@ class Node
     /// \brief Method in charge of receiving the discovery updates.
     void RecvDiscoveryUpdates()
     {
-      char rcvStr[MaxRcvStr];     // Buffer for data
-      std::string srcAddr;           // Address of datagram source
-      unsigned short srcPort;        // Port of datagram source
+      char rcvStr[MaxRcvStr];    // Buffer for data
+      std::string srcAddr;       // Address of datagram source
+      unsigned short srcPort;    // Port of datagram source
       int bytes;                 // Rcvd from the UDP broadcast socket
 
       try
       {
         bytes = this->bcastSock->recvFrom(rcvStr, MaxRcvStr, srcAddr, srcPort);
-      } catch (SocketException &e)
+      } catch(const SocketException &e)
       {
         cerr << "Exception receiving from the UDP socket: " << e.what() << endl;
         return;
@@ -525,7 +544,7 @@ class Node
     /// \brief Method in charge of receiving the topic updates.
     void RecvTopicUpdates()
     {
-      zmsg *msg = new zmsg (*this->subscriber);
+      zmsg *msg = new zmsg(*this->subscriber);
       if (this->verbose)
       {
         std::cout << "\nReceived topic update" << std::endl;
@@ -540,9 +559,11 @@ class Node
       }
 
       // Read the DATA message
-      std::string topic = std::string((char*)msg->pop_front().c_str());
-      msg->pop_front(); // Sender
-      std::string data = std::string((char*)msg->pop_front().c_str());
+      std::string topic =
+        std::string((char*)msg->pop_front().c_str());
+      msg->pop_front();  // Sender
+      std::string data =
+        std::string((char*)msg->pop_front().c_str());
 
       if (this->topics.Subscribed(topic))
       {
@@ -561,7 +582,7 @@ class Node
     /// \brief Method in charge of receiving the service call requests.
     void RecvSrvRequest()
     {
-      zmsg *msg = new zmsg (*this->srvReplier);
+      zmsg *msg = new zmsg(*this->srvReplier);
       if (this->verbose)
       {
         std::cout << "\nReceived service request" << std::endl;
@@ -576,9 +597,11 @@ class Node
       }
 
       // Read the REQ message
-      std::string topic = std::string((char*)msg->pop_front().c_str());
-      std::string sender = std::string((char*)msg->pop_front().c_str());
-      std::string data = std::string((char*)msg->pop_front().c_str());
+      std::string topic =
+          std::string((char*)msg->pop_front().c_str());
+      std::string((char*)msg->pop_front().c_str());
+      std::string data =
+          std::string((char*)msg->pop_front().c_str());
 
       if (this->topicsSrvs.AdvertisedByMe(topic))
       {
@@ -602,7 +625,7 @@ class Node
           std::cout << "\nResponse (" << topic << ")" << std::endl;
           reply.dump();
         }
-        reply.send (*this->srvReplier);
+        reply.send(*this->srvReplier);
       }
       else
       {
@@ -614,7 +637,7 @@ class Node
     /// \brief Method in charge of receiving the async service call replies.
     void RecvSrvReply()
     {
-      zmsg *msg = new zmsg (*this->srvRequester);
+      zmsg *msg = new zmsg(*this->srvRequester);
       if (this->verbose)
       {
         std::cout << "\nReceived async service reply" << std::endl;
@@ -629,9 +652,11 @@ class Node
       }
 
       // Read the SRV_REP message
-      std::string topic = std::string((char*)msg->pop_front().c_str());
+      std::string topic =
+          std::string((char*)msg->pop_front().c_str());
       std::string((char*)msg->pop_front().c_str());
-      std::string response = std::string((char*)msg->pop_front().c_str());
+      std::string response =
+          std::string((char*)msg->pop_front().c_str());
 
       // Execute the callback registered
       TopicInfo::ReqCallback cb;
@@ -648,7 +673,7 @@ class Node
     {
       // Check if there are any pending requests ready to send
       for (TopicInfo::Topics_M_it it = this->topicsSrvs.GetTopics().begin();
-           it != this->topicsSrvs.GetTopics().end(); it++)
+           it != this->topicsSrvs.GetTopics().end(); ++it)
       {
         std::string topic = it->first;
 
@@ -676,7 +701,7 @@ class Node
             std::cout << "\nAsync request [" << topic << "][" << data << "]\n";
             msg.dump();
           }
-          msg.send (*this->srvRequester);
+          msg.send(*this->srvRequester);
         }
       }
     }
@@ -727,7 +752,7 @@ class Node
               if (this->verbose)
                 std::cout << "\t* Connected to [" << address << "]\n";
             }
-            catch (const zmq::error_t& ze)
+            catch(const zmq::error_t& ze)
             {
               std::cout << "Error connecting [" << ze.what() << "]\n";
             }
@@ -758,7 +783,7 @@ class Node
               if (this->verbose)
                 std::cout << "\t* Connected to [" << address << "]\n";
             }
-            catch (const zmq::error_t& ze)
+            catch(const zmq::error_t& ze)
             {
               std::cout << "Error connecting [" << ze.what() << "]\n";
             }
@@ -826,7 +851,7 @@ class Node
       {
         this->bcastSock->sendTo(buffer, advMsg.GetMsgLength(),
           this->bcastAddr, this->bcastPort);
-      } catch (SocketException &e) {
+      } catch(const SocketException &e) {
         cerr << "Exception sending an ADV msg: " << e.what() << endl;
         delete[] buffer;
         return -1;
@@ -858,7 +883,7 @@ class Node
       {
         this->bcastSock->sendTo(buffer, header.GetHeaderLength(),
           this->bcastAddr, this->bcastPort);
-      } catch (SocketException &e) {
+      } catch(const SocketException &e) {
         cerr << "Exception sending a SUB msg: " << e.what() << endl;
         delete[] buffer;
         return -1;

@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2012-2014 Open Source Robotics Foundation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+*/
+
 #include <arpa/inet.h>
 #include <dns_sd.h>
 #include <stdio.h>
@@ -5,7 +22,7 @@
 #include <errno.h>
 #include <iostream>
 
-#define LONG_TIME 1
+#define LONG_TIME 10
 
 static volatile int stopNow = 0;
 static volatile int timeOut = LONG_TIME;
@@ -25,7 +42,8 @@ void HandleEvents(DNSServiceRef serviceRef)
     FD_SET(dns_sd_fd, &readfds);
     tv.tv_sec = timeOut;
     tv.tv_usec = 0;
-    result = select(nfds, &readfds, (fd_set*)NULL, (fd_set*)NULL, &tv);
+    result = select(nfds, &readfds, reinterpret_cast<fd_set*>(NULL),
+      reinterpret_cast<fd_set*>(NULL), &tv);
     if (result > 0)
     {
       std::cout << "Fuera del select()" << std::endl;
@@ -59,9 +77,9 @@ static void MyBrowseCallBack(DNSServiceRef service,
     std::cerr << "MyBrowseCallBack returned " << errorCode << std::endl;
   else
   {
-    const char *addString = (flags & kDNSServiceFlagsAdd) ? "ADD" : "REMOVE";
-    const char *moreString = (flags & kDNSServiceFlagsMoreComing) ? "MORE" : "   ";
-    std::cout << addString << " " << moreString << " " << interfaceIndex
+    const char *addStr = (flags & kDNSServiceFlagsAdd) ? "ADD" : "REMOVE";
+    const char *moreStr = (flags & kDNSServiceFlagsMoreComing) ? "MORE" : "   ";
+    std::cout << addStr << " " << moreStr << " " << interfaceIndex
               << name << "." << type << domain << std::endl;
   }
 
@@ -74,8 +92,8 @@ static DNSServiceErrorType MyDNSServiceBrowse()
   DNSServiceErrorType error;
   DNSServiceRef serviceRef;
 
-  error = DNSServiceBrowse(&serviceRef, 0, 0, "_ros._tcp", "", MyBrowseCallBack,
-    NULL);
+  error = DNSServiceBrowse(&serviceRef, 0, 0, "_Workstation._tcp", "",
+    MyBrowseCallBack, NULL);
 
   if (error == kDNSServiceErr_NoError)
   {
@@ -89,7 +107,7 @@ static DNSServiceErrorType MyDNSServiceBrowse()
 }
 
 //  ---------------------------------------------------------------------
-int main (int argc, const char *argv[])
+int main(int argc, const char *argv[])
 {
   DNSServiceErrorType error = MyDNSServiceBrowse();
   if (error) std::cerr << "DNSServiceDiscovery() returned " << error << "\n";
