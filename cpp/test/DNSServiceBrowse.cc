@@ -21,8 +21,11 @@
 #include <string.h>
 #include <errno.h>
 #include <iostream>
+#include <string>
 
-#define LONG_TIME 10
+//#define LONG_TIME 10
+#define LONG_TIME 100000000
+
 
 static volatile int stopNow = 0;
 static volatile int timeOut = LONG_TIME;
@@ -92,7 +95,7 @@ static DNSServiceErrorType MyDNSServiceBrowse()
   DNSServiceErrorType error;
   DNSServiceRef serviceRef;
 
-  error = DNSServiceBrowse(&serviceRef, 0, 0, "_Workstation._tcp", "",
+  error = DNSServiceBrowse(&serviceRef, 0, 0, "_discZmq._tcp", "",
     MyBrowseCallBack, NULL);
 
   if (error == kDNSServiceErr_NoError)
@@ -107,8 +110,76 @@ static DNSServiceErrorType MyDNSServiceBrowse()
 }
 
 //  ---------------------------------------------------------------------
+static void MyRegisterCallBack(DNSServiceRef service,
+                               DNSServiceFlags flags,
+                               DNSServiceErrorType errorCode,
+                               const char *name,
+                               const char *type,
+                               const char *domain,
+                               void *contest)
+{
+  #pragma unused(flags)
+  #pragma unused(context)
+
+  if (errorCode != kDNSServiceErr_NoError)
+    std::cerr << "MyRegisterCallBack() returned " << errorCode << std::endl;
+  else
+    std::cout << "REGISTER " << name << " " << type << domain << "\n";
+}
+
+//  ---------------------------------------------------------------------
+static DNSServiceErrorType MyDNSRegisterService()
+{
+  DNSServiceErrorType error;
+  DNSServiceRef serviceRef;
+
+  // Create the DNS TXT register data
+  char buffer[512];
+  TXTRecordRef txtRecord;
+
+  TXTRecordCreate(&txtRecord, sizeof(buffer), buffer);
+  // Create a TXT record for the topic name
+  std::string topic = "test_topic";
+  TXTRecordSetValue(&txtRecord, "topic", topic.size(), topic.c_str());
+
+  error = DNSServiceRegister(&serviceRef,
+                             0,
+                             0,
+                             "caguero",
+                             "_discZmq._tcp",
+                             "",
+                             NULL,
+                             htons(9092),
+                             TXTRecordGetLength(&txtRecord),
+                             TXTRecordGetBytesPtr(&txtRecord),
+                             MyRegisterCallBack,
+                             NULL);
+
+  TXTRecordDeallocate(&txtRecord);
+
+  if (error == kDNSServiceErr_NoError)
+  {
+    HandleEvents(serviceRef);
+    DNSServiceRefDeallocate(serviceRef);
+  }
+  else
+    std::cerr << "MyRegisterCallBack() returned " << error << std::endl;
+
+  /*if (error != kDNSServiceErr_NoError)
+  {
+    std::cerr << "MyRegisterCallBack() returned " << error << std::endl;
+  }*/
+
+  return error;
+}
+
+//  ---------------------------------------------------------------------
 int main(int argc, const char *argv[])
 {
+  /*DNSServiceErrorType error = MyDNSRegisterService();
+  if (error) std::cerr << "DNSRegisterService() returned "
+                       << error << "\n";*/
+
   DNSServiceErrorType error = MyDNSServiceBrowse();
   if (error) std::cerr << "DNSServiceDiscovery() returned " << error << "\n";
 

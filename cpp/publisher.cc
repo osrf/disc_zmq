@@ -110,7 +110,7 @@ int main(int argc, char *argv[])
   if (rc != 0)
     std::cout << "Advertise did not work" << std::endl;
 
-  /*if (selfSubscribe)
+  if (selfSubscribe)
   {
     // Self-subscribe to the topic
     rc = node.Subscribe(topic, cb);
@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
   {
     node.Publish(topic, data);
     node.SpinOnce();
-  }*/
+  }
 
   // Zzzzzz Zzzzzz
   std::cout << "\nPress any key to exit" << std::endl;

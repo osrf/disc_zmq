@@ -21,9 +21,12 @@
 #include <arpa/inet.h>
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/thread.hpp>
+
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <dns_sd.h>
+#include <stdlib.h>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -35,20 +38,32 @@
 #include "zmq/zmq.hpp"
 #include "zmq/zmsg.hpp"
 
-
 const int MaxRcvStr = 65536;  // Longest string to receive
 const std::string InprocAddr = "inproc://local";
 
-// DNS_SD
-#define LONG_TIME 100000000
+// #define LONG_TIME 100000000
+ #define LONG_TIME 3
 
 static volatile int stopNow = 0;
 static volatile int timeOut = LONG_TIME;
 
 //  ---------------------------------------------------------------------
+static void MyResolveCallBack(DNSServiceRef sdRef,
+                              DNSServiceFlags flags,
+                              uint32_t interfaceIndex,
+                              DNSServiceErrorType errorCode,
+                              const char *fullname,
+                              const char *hosttarget,
+                              uint16_t port,
+                              uint16_t txtLen,
+                              const unsigned char *txtRecord,
+                              void *context);
+
+//  ---------------------------------------------------------------------
 void HandleEvents(DNSServiceRef serviceRef)
 {
   int dns_sd_fd = DNSServiceRefSockFD(serviceRef);
+  int nfds = dns_sd_fd + 1;
   fd_set readfds;
   struct timeval tv;
   int result;
@@ -59,7 +74,7 @@ void HandleEvents(DNSServiceRef serviceRef)
     FD_SET(dns_sd_fd, &readfds);
     tv.tv_sec = timeOut;
     tv.tv_usec = 0;
-    result = select(1, &readfds, reinterpret_cast<fd_set*>(NULL),
+    result = select(nfds, &readfds, reinterpret_cast<fd_set*>(NULL),
       reinterpret_cast<fd_set*>(NULL), &tv);
     if (result > 0)
     {
@@ -75,6 +90,27 @@ void HandleEvents(DNSServiceRef serviceRef)
       if (errno != EINTR) stopNow = 1;
     }
   }
+}
+
+//  ---------------------------------------------------------------------
+static DNSServiceErrorType MyDNSServiceResolve(const std::string &_name,
+                                               void *context)
+{
+  DNSServiceErrorType error;
+  DNSServiceRef serviceRef;
+
+  error = DNSServiceResolve(&serviceRef, 0, 0, _name.c_str(), "_discZmq._tcp",
+    "", MyResolveCallBack, context);
+
+  if (error == kDNSServiceErr_NoError)
+  {
+    HandleEvents(serviceRef);
+    DNSServiceRefDeallocate(serviceRef);
+  }
+  else
+    std::cerr << "MyDNSServiceResolve() returned " << error << std::endl;
+
+  return error;
 }
 
 //  ---------------------------------------------------------------------
@@ -95,7 +131,38 @@ static void MyRegisterCallBack(DNSServiceRef service,
     std::cout << "REGISTER " << name << " " << type << domain << "\n";
 }
 
+//  ---------------------------------------------------------------------
+static void MyBrowseCallBack(DNSServiceRef service,
+                             DNSServiceFlags flags,
+                             uint32_t interfaceIndex,
+                             DNSServiceErrorType errorCode,
+                             const char *name,
+                             const char *type,
+                             const char *domain,
+                             void *context)
+{
+  // std::cout << "Callback()" << std::endl;
 
+  if (errorCode != kDNSServiceErr_NoError)
+    std::cerr << "MyBrowseCallBack returned " << errorCode << std::endl;
+  else
+  {
+    const char *addStr = (flags & kDNSServiceFlagsAdd) ? "ADD" : "REMOVE";
+    const char *moreStr = (flags & kDNSServiceFlagsMoreComing) ? "MORE" : "   ";
+    // std::cout << addStr << " " << moreStr << " " << interfaceIndex
+    //          << name << "." << type << domain << std::endl;
+  }
+
+  if (!(flags & kDNSServiceFlagsMoreComing)) fflush(stdout);
+
+  if (flags & kDNSServiceFlagsAdd)
+  {
+    // ToDo: resolv this service and move the instructions below to the callback
+    MyDNSServiceResolve(name, context);
+  }
+}
+
+//  ---------------------------------------------------------------------
 class Node
 {
   public:
@@ -106,35 +173,34 @@ class Node
       DNSServiceRef serviceRef;
 
       // Create the DNS TXT register data
-      char buffer[512];
+      // char buffer[512];
       TXTRecordRef txtRecord;
 
-      TXTRecordCreate(&txtRecord, sizeof(buffer), buffer);
+      TXTRecordCreate(&txtRecord, 0, NULL);
       // Create a TXT record for the topic name
-      TXTRecordSetValue(&txtRecord, "t", _topic.size(), _topic.c_str());
+      //std::cout << "Topic: [" << _topic.data() << "]" << std::endl;
+      TXTRecordSetValue(&txtRecord, "t", _topic.length(), _topic.data());
       // Create a TXT record for the GUID
+      //std::cout << "GUID: [" << this->guidStr.data() << "]" << std::endl;
       TXTRecordSetValue(&txtRecord, "g", this->guidStr.size(),
-        this->guidStr.c_str());
+        this->guidStr.data());
       // Create a TXT record for the current addresses
       std::string addresses = "";
       std::vector<std::string>::iterator it;
       for (it = this->myAddresses.begin(); it != this->myAddresses.end(); ++it)
         addresses += *it + " ";
-      TXTRecordSetValue(&txtRecord, "a", addresses.size(),
-        addresses.c_str());
-      std::cout << "Addresses: " << addresses << std::endl;
+      TXTRecordSetValue(&txtRecord, "a", addresses.size() - 1, addresses.data());
+      //std::cout << "Addresses: [" << addresses << << "]" << std::endl;
 
       // Register the service
       error = DNSServiceRegister(&serviceRef,
                                  0,
                                  0,
-                                 "pub",
-                                 "_ros._tcp",
+                                 "caguero",
+                                 "_discZmq._tcp",
                                  "",
                                  NULL,
                                  htons(9092),
-                                 // txtRecord.size(),
-                                 // txtRecord.data(),
                                  TXTRecordGetLength(&txtRecord),
                                  TXTRecordGetBytesPtr(&txtRecord),
                                  MyRegisterCallBack,
@@ -152,12 +218,37 @@ class Node
     }
 
     //  ---------------------------------------------------------------------
+    DNSServiceErrorType MyDNSServiceBrowse()
+    {
+      DNSServiceErrorType error;
+      DNSServiceRef serviceRef;
+
+      error = DNSServiceBrowse(&serviceRef, 0, 0, "_discZmq._tcp", "",
+        MyBrowseCallBack, this);
+
+      if (error == kDNSServiceErr_NoError)
+      {
+        // std::cout << "Browsing services" << std::endl;
+        HandleEvents(serviceRef);
+        //DNSServiceProcessResult(serviceRef);
+        DNSServiceRefDeallocate(serviceRef);
+      }
+      else
+        std::cerr << "MyDNSServiceBrowse() returned " << error << std::endl;
+
+      return error;
+    }
+
+    //  ---------------------------------------------------------------------
     /// \brief Constructor.
     /// \param[in] _master End point with the master's endpoint.
     /// \param[in] _verbose true for enabling verbose mode.
     Node(std::string _master, bool _verbose)
     {
       char bindEndPoint[1024];
+
+      // Remove avahi warnings
+      setenv("AVAHI_COMPAT_NOWARN", "1", 1);
 
       // Initialize random seed
       srand(time(NULL));
@@ -236,8 +327,8 @@ class Node
       zmq::pollitem_t items[] = {
         { *this->subscriber, 0, ZMQ_POLLIN, 0 },
         { *this->srvReplier, 0, ZMQ_POLLIN, 0 },
-        { 0, this->bcastSock->sockDesc, ZMQ_POLLIN, 0 },
         { *this->srvRequester, 0, ZMQ_POLLIN, 0 }
+        // { 0, this->bcastSock->sockDesc, ZMQ_POLLIN, 0 }
       };
       zmq::poll(&items[0], sizeof(items) / sizeof(items[0]), this->timeout);
 
@@ -247,9 +338,9 @@ class Node
       else if (items[1].revents & ZMQ_POLLIN)
         this->RecvSrvRequest();
       else if (items[2].revents & ZMQ_POLLIN)
-        this->RecvDiscoveryUpdates();
-      else if (items[3].revents & ZMQ_POLLIN)
         this->RecvSrvReply();
+      // else if (items[3].revents & ZMQ_POLLIN)
+      //   this->RecvDiscoveryUpdates();
     }
 
     //  ---------------------------------------------------------------------
@@ -294,6 +385,8 @@ class Node
       assert(_topic != "");
 
       this->topics.SetAdvertisedByMe(_topic, false);
+
+      // ToDo: Unregister the topic in the dns_sd daemon
 
       return 0;
     }
@@ -354,6 +447,7 @@ class Node
 
       // Discover the list of nodes that publish on the topic
       // return this->SendSubscribeMsg(SUB, _topic);
+      this->MyDNSServiceBrowse();
 
       return 0;
     }
@@ -393,10 +487,10 @@ class Node
       if (this->verbose)
         std::cout << "\nAdvertise srv call(" << _topic << ")\n";
 
-      std::vector<std::string>::iterator it;
+      /*std::vector<std::string>::iterator it;
       for (it = this->mySrvAddresses.begin();
            it != this->mySrvAddresses.end(); ++it)
-        this->SendAdvertiseMsg(ADV_SVC, _topic, *it);
+        this->SendAdvertiseMsg(ADV_SVC, _topic, *it);*/
 
       return 0;
     }
@@ -415,6 +509,8 @@ class Node
       if (this->verbose)
         std::cout << "\nUnadvertise srv call(" << _topic << ")\n";
 
+      // ToDo: Notify the avahi daemon
+
       return 0;
     }
 
@@ -427,7 +523,7 @@ class Node
     int SrvRequest(const std::string &_topic, const std::string &_data,
       std::string &_response)
     {
-      assert(_topic != "");
+      /*assert(_topic != "");
 
       this->topicsSrvs.SetRequested(_topic, true);
 
@@ -471,7 +567,7 @@ class Node
             std::string((char*)reply->pop_front().c_str());
 
         return 0;
-      }
+      }*/
 
       return -1;
     }
@@ -485,7 +581,7 @@ class Node
     int SrvRequestAsync(const std::string &_topic, const std::string &_data,
       void(*_cb)(const std::string &_topic, int rc, const std::string &_rep))
     {
-      assert(_topic != "");
+      /*assert(_topic != "");
 
       this->topicsSrvs.SetRequested(_topic, true);
       this->topicsSrvs.SetReqCallback(_topic, _cb);
@@ -494,7 +590,7 @@ class Node
       if (this->verbose)
         std::cout << "\nAsync request (" << _topic << ")" << std::endl;
 
-      this->SendSubscribeMsg(SUB_SVC, _topic);
+      this->SendSubscribeMsg(SUB_SVC, _topic);*/
 
       return 0;
     }
@@ -512,32 +608,6 @@ class Node
 
       this->myAddresses.clear();
       this->mySrvAddresses.clear();
-    }
-
-    //  ---------------------------------------------------------------------
-    /// \brief Method in charge of receiving the discovery updates.
-    void RecvDiscoveryUpdates()
-    {
-      char rcvStr[MaxRcvStr];    // Buffer for data
-      std::string srcAddr;       // Address of datagram source
-      unsigned short srcPort;    // Port of datagram source
-      int bytes;                 // Rcvd from the UDP broadcast socket
-
-      try
-      {
-        bytes = this->bcastSock->recvFrom(rcvStr, MaxRcvStr, srcAddr, srcPort);
-      } catch(const SocketException &e)
-      {
-        cerr << "Exception receiving from the UDP socket: " << e.what() << endl;
-        return;
-      }
-
-      if (this->verbose)
-        cout << "\nReceived discovery update from " << srcAddr <<
-                ": " << srcPort << " (" << bytes << " bytes)" << endl;
-
-      if (this->DispatchDiscoveryMsg(rcvStr) != 0)
-        std::cerr << "Something went wrong parsing a discovery message\n";
     }
 
     //  ---------------------------------------------------------------------
@@ -706,201 +776,14 @@ class Node
       }
     }
 
-    //  ---------------------------------------------------------------------
-    /// \brief Parse a discovery message received via the UDP broadcast socket.
-    /// \param[in] _msg Received message.
-    /// \return 0 when success.
-    int DispatchDiscoveryMsg(char *_msg)
-    {
-      Header header;
-      AdvMsg advMsg;
-      std::string address;
-      char *pBody = _msg;
-      std::vector<std::string>::iterator it;
-
-      header.Unpack(_msg);
-      pBody += header.GetHeaderLength();
-
-      std::string topic = header.GetTopic();
-      std::string rcvdGuid = boost::lexical_cast<std::string>(header.GetGuid());
-
-      if (this->verbose)
-        header.Print();
-
-      switch (header.GetType())
-      {
-        case ADV:
-          // Read the address
-          advMsg.UnpackBody(pBody);
-          address = advMsg.GetAddress();
-
-          if (this->verbose)
-            advMsg.PrintBody();
-
-          // Register the advertised address for the topic
-          this->topics.AddAdvAddress(topic, address);
-
-          // Check if we are interested in this topic
-          if (this->topics.Subscribed(topic) &&
-              !this->topics.Connected(topic) &&
-              this->guidStr.compare(rcvdGuid) != 0)
-          {
-            try
-            {
-              this->subscriber->connect(address.c_str());
-              this->topics.SetConnected(topic, true);
-              if (this->verbose)
-                std::cout << "\t* Connected to [" << address << "]\n";
-            }
-            catch(const zmq::error_t& ze)
-            {
-              std::cout << "Error connecting [" << ze.what() << "]\n";
-            }
-          }
-
-          break;
-
-        case ADV_SVC:
-          // Read the address
-          advMsg.UnpackBody(pBody);
-          address = advMsg.GetAddress();
-
-          if (this->verbose)
-            advMsg.PrintBody();
-
-          // Register the advertised address for the service call
-          this->topicsSrvs.AddAdvAddress(topic, address);
-
-          // Check if we are interested in this service call
-          if (this->topicsSrvs.Requested(topic) &&
-              !this->topicsSrvs.Connected(topic) &&
-              this->guidStr.compare(rcvdGuid) != 0)
-          {
-            try
-            {
-              this->srvRequester->connect(address.c_str());
-              this->topicsSrvs.SetConnected(topic, true);
-              if (this->verbose)
-                std::cout << "\t* Connected to [" << address << "]\n";
-            }
-            catch(const zmq::error_t& ze)
-            {
-              std::cout << "Error connecting [" << ze.what() << "]\n";
-            }
-          }
-
-          break;
-
-        case SUB:
-          // Check if I advertise the topic requested
-          if (this->topics.AdvertisedByMe(topic))
-          {
-            // Send to the broadcast socket an ADVERTISE message
-            for (it = this->myAddresses.begin();
-                 it != this->myAddresses.end(); ++it)
-              this->SendAdvertiseMsg(ADV, topic, *it);
-          }
-
-          break;
-
-        case SUB_SVC:
-          // Check if I advertise the service call requested
-          if (this->topicsSrvs.AdvertisedByMe(topic))
-          {
-            // Send to the broadcast socket an ADV_SVC message
-            for (it = this->mySrvAddresses.begin();
-                 it != this->mySrvAddresses.end(); ++it)
-            {
-              this->SendAdvertiseMsg(ADV_SVC, topic, *it);
-            }
-          }
-
-          break;
-
-        default:
-          std::cerr << "Unknown message type [" << header.GetType() << "]\n";
-          break;
-      }
-
-      return 0;
-    }
-
-    //  ---------------------------------------------------------------------
-    /// \brief Send an ADVERTISE message to the discovery socket.
-    /// \param[in] _type ADV or ADV_SVC.
-    /// \param[in] _topic Topic to be advertised.
-    /// \param[in] _address Address to be advertised with the topic.
-    /// \return 0 when success.
-    int SendAdvertiseMsg(uint8_t _type, const std::string &_topic,
-                         const std::string &_address)
-    {
-      assert(_topic != "");
-
-      if (this->verbose)
-        std::cout << "\t* Sending ADV msg [" << _topic << "][" << _address
-                  << "]" << std::endl;
-
-      Header header(TRNSP_VERSION, this->guid, _topic, _type, 0);
-      AdvMsg advMsg(header, _address);
-
-      char *buffer = new char[advMsg.GetMsgLength()];
-      advMsg.Pack(buffer);
-
-      // Send the data through the UDP broadcast socket
-      try
-      {
-        this->bcastSock->sendTo(buffer, advMsg.GetMsgLength(),
-          this->bcastAddr, this->bcastPort);
-      } catch(const SocketException &e) {
-        cerr << "Exception sending an ADV msg: " << e.what() << endl;
-        delete[] buffer;
-        return -1;
-      }
-
-      delete[] buffer;
-      return 0;
-    }
-
-    //  ---------------------------------------------------------------------
-    /// \brief Send a SUBSCRIBE message to the discovery socket.
-    /// \param[in] _type SUB or SUB_SVC.
-    /// \param[in] _topic Topic name.
-    /// \return 0 when success.
-    int SendSubscribeMsg(uint8_t _type, const std::string &_topic)
-    {
-      assert(_topic != "");
-
-      if (this->verbose)
-        std::cout << "\t* Sending SUB msg [" << _topic << "]" << std::endl;
-
-      Header header(TRNSP_VERSION, this->guid, _topic, _type, 0);
-
-      char *buffer = new char[header.GetHeaderLength()];
-      header.Pack(buffer);
-
-      // Send the data through the UDP broadcast socket
-      try
-      {
-        this->bcastSock->sendTo(buffer, header.GetHeaderLength(),
-          this->bcastAddr, this->bcastPort);
-      } catch(const SocketException &e) {
-        cerr << "Exception sending a SUB msg: " << e.what() << endl;
-        delete[] buffer;
-        return -1;
-      }
-
-      delete[] buffer;
-      return 0;
-    }
-
     // Master address
     std::string master;
 
     // Print activity to stdout
-    int verbose;
+    // int verbose;
 
     // Topic information
-    TopicsInfo topics;
+    // TopicsInfo topics;
     TopicsInfo topicsSrvs;
 
     // My pub/sub address
@@ -918,7 +801,7 @@ class Node
     // 0MQ Sockets
     zmq::context_t *context;
     zmq::socket_t *publisher;     //  Socket to send topic updates
-    zmq::socket_t *subscriber;    //  Socket to receive topic updates
+    // zmq::socket_t *subscriber;    //  Socket to receive topic updates
     zmq::socket_t *srvRequester;  //  Socket to send service call requests
     zmq::socket_t *srvReplier;    //  Socket to receive service call requests
     std::string tcpEndpoint;
@@ -928,7 +811,85 @@ class Node
 
     // GUID
     boost::uuids::uuid guid;
+    // std::string guidStr;
+
+  public:
+    TopicsInfo topics;
     std::string guidStr;
+    zmq::socket_t *subscriber;    //  Socket to receive topic updates
+    int verbose;
 };
+
+//  ---------------------------------------------------------------------
+static void MyResolveCallBack(DNSServiceRef sdRef,
+                              DNSServiceFlags flags,
+                              uint32_t interfaceIndex,
+                              DNSServiceErrorType errorCode,
+                              const char *fullname,
+                              const char *hosttarget,
+                              uint16_t port,
+                              uint16_t txtLen,
+                              const unsigned char *txtRecord,
+                              void *context)
+{
+  uint8_t len;
+  char *valuePtr;
+  char *address, *topic, *rcvdGuid;
+  // std::cout << "MyResolveCallBack()" << std::endl;
+
+  Node *node = (Node*)context;
+
+  if (TXTRecordContainsKey(txtLen, txtRecord, "a"))
+  {
+    // Read the address
+    valuePtr = (char*)TXTRecordGetValuePtr(txtLen, txtRecord, "a", &len);
+    address = new char[len + 1];
+    bcopy(valuePtr, address, len);
+    address[len] = '\0';
+    // std::cout << "Address parsed: [" << address << "]" << std::endl;
+  }
+
+  if (TXTRecordContainsKey(txtLen, txtRecord, "t"))
+  {
+    // Read the topic
+    valuePtr = (char*)TXTRecordGetValuePtr(txtLen, txtRecord, "t", &len);
+    topic = new char[len + 1];
+    bcopy(valuePtr, topic, len);
+    topic[len] = '\0';
+    // std::cout << "Topic parsed: [" << topic << "], len: "
+    //          << static_cast<int>(len) << std::endl;
+  }
+
+  if (TXTRecordContainsKey(txtLen, txtRecord, "g"))
+  {
+    // Read the GUID
+    valuePtr = (char*)TXTRecordGetValuePtr(txtLen, txtRecord, "g", &len);
+    rcvdGuid = new char[len + 1];
+    bcopy(valuePtr, rcvdGuid, len);
+    rcvdGuid[len] = '\0';
+    // std::cout << "GUIDparsed: [" << rcvdGuid << "]" << std::endl;
+  }
+
+  // Register the advertised address for the topic
+  node->topics.AddAdvAddress(topic, address);
+
+  // Check if we are interested in this topic
+  if (node->topics.Subscribed(topic) &&
+      !node->topics.Connected(topic) &&
+      node->guidStr.compare(rcvdGuid) != 0)
+  {
+    try
+    {
+      node->subscriber->connect(address);
+      node->topics.SetConnected(topic, true);
+      if (node->verbose)
+        std::cout << "\t* Connected to [" << address << "]\n";
+    }
+    catch(const zmq::error_t& ze)
+    {
+      std::cout << "Error connecting [" << ze.what() << "]\n";
+    }
+  }
+}
 
 #endif
