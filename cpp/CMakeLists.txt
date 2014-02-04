@@ -2,10 +2,12 @@ cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
 INCLUDE (CheckIncludeFiles)
 include(FindBoost)
 
+project (disc_zmq)
+
 add_subdirectory(test)
 
 CHECK_INCLUDE_FILES(ifaddrs.h HAVE_IFADDRS_H)
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/cmake/config.hh.in ${CMAKE_CURRENT_BINARY_DIR}/config.hh)
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/cmake/config.hh.in ${CMAKE_CURRENT_SOURCE_DIR}/config.hh)
 
 add_library(SOCKETS sockets/socket.cc)
 

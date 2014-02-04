@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string>
 
-#include "build/config.hh"
+#include "config.hh"
 
 #ifdef HAVE_IFADDRS_H
 # include <ifaddrs.h>
