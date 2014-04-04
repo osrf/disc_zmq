@@ -31,10 +31,8 @@
 #include "zmq/zmq.hpp"
 #include "zmq/zmsg.hpp"
 
-using namespace transport;
-
 //////////////////////////////////////////////////
-Node::Node(std::string _master, bool _verbose)
+transport::Node::Node(std::string _master, bool _verbose)
 {
   char bindEndPoint[1024];
 
@@ -99,13 +97,13 @@ Node::Node(std::string _master, bool _verbose)
 }
 
 //////////////////////////////////////////////////
-Node::~Node()
+transport::Node::~Node()
 {
   this->Fini();
 }
 
 //////////////////////////////////////////////////
-void Node::SpinOnce()
+void transport::Node::SpinOnce()
 {
   this->SendPendingAsyncSrvCalls();
 
@@ -130,7 +128,7 @@ void Node::SpinOnce()
 }
 
 //////////////////////////////////////////////////
-void Node::Spin()
+void transport::Node::Spin()
 {
   while (true)
   {
@@ -139,7 +137,7 @@ void Node::Spin()
 }
 
 //////////////////////////////////////////////////
-int Node::Advertise(const std::string &_topic)
+int transport::Node::Advertise(const std::string &_topic)
 {
   assert(_topic != "");
 
@@ -153,7 +151,7 @@ int Node::Advertise(const std::string &_topic)
 }
 
 //////////////////////////////////////////////////
-int Node::UnAdvertise(const std::string &_topic)
+int transport::Node::UnAdvertise(const std::string &_topic)
 {
   assert(_topic != "");
 
@@ -163,7 +161,7 @@ int Node::UnAdvertise(const std::string &_topic)
 }
 
 //////////////////////////////////////////////////
-int Node::Publish(const std::string &_topic,
+int transport::Node::Publish(const std::string &_topic,
             const std::string &_data)
 {
   assert(_topic != "");
@@ -193,7 +191,7 @@ int Node::Publish(const std::string &_topic,
 }
 
 //////////////////////////////////////////////////
-int Node::Publish(const std::string &_topic,
+int transport::Node::Publish(const std::string &_topic,
             const google::protobuf::Message &_message)
 {
   assert(_topic != "");
@@ -205,7 +203,7 @@ int Node::Publish(const std::string &_topic,
 }
 
 //////////////////////////////////////////////////
-int Node::Subscribe(const std::string &_topic,
+int transport::Node::Subscribe(const std::string &_topic,
   void(*_cb)(const std::string &, const std::string &))
 {
   assert(_topic != "");
@@ -226,7 +224,7 @@ int Node::Subscribe(const std::string &_topic,
 }
 
 //////////////////////////////////////////////////
-int Node::UnSubscribe(const std::string &_topic)
+int transport::Node::UnSubscribe(const std::string &_topic)
 {
   assert(_topic != "");
   if (this->verbose)
@@ -242,7 +240,7 @@ int Node::UnSubscribe(const std::string &_topic)
 }
 
 //////////////////////////////////////////////////
-int Node::SrvAdvertise(const std::string &_topic,
+int transport::Node::SrvAdvertise(const std::string &_topic,
   int(*_cb)(const std::string &, const std::string &, std::string &))
 {
   assert(_topic != "");
@@ -262,7 +260,7 @@ int Node::SrvAdvertise(const std::string &_topic,
 }
 
 //////////////////////////////////////////////////
-int Node::SrvUnAdvertise(const std::string &_topic)
+int transport::Node::SrvUnAdvertise(const std::string &_topic)
 {
   assert(_topic != "");
 
@@ -276,8 +274,9 @@ int Node::SrvUnAdvertise(const std::string &_topic)
 }
 
 //////////////////////////////////////////////////
-int Node::SrvRequest(const std::string &_topic, const std::string &_data,
-  std::string &_response)
+int transport::Node::SrvRequest(const std::string &_topic,
+                                const std::string &_data,
+                                std::string &_response)
 {
   assert(_topic != "");
 
@@ -328,7 +327,8 @@ int Node::SrvRequest(const std::string &_topic, const std::string &_data,
 }
 
 //////////////////////////////////////////////////
-int Node::SrvRequestAsync(const std::string &_topic, const std::string &_data,
+int transport::Node::SrvRequestAsync(const std::string &_topic,
+                                     const std::string &_data,
   void(*_cb)(const std::string &_topic, int rc, const std::string &_rep))
 {
   assert(_topic != "");
@@ -346,7 +346,7 @@ int Node::SrvRequestAsync(const std::string &_topic, const std::string &_data,
 }
 
 //////////////////////////////////////////////////
-void Node::Fini()
+void transport::Node::Fini()
 {
   if (this->publisher) delete this->publisher;
   if (this->publisher) delete this->subscriber;
@@ -359,7 +359,7 @@ void Node::Fini()
 }
 
 //////////////////////////////////////////////////
-void Node::RecvDiscoveryUpdates()
+void transport::Node::RecvDiscoveryUpdates()
 {
   char rcvStr[MaxRcvStr];     // Buffer for data
   std::string srcAddr;           // Address of datagram source
@@ -385,7 +385,7 @@ void Node::RecvDiscoveryUpdates()
 }
 
 //////////////////////////////////////////////////
-void Node::RecvTopicUpdates()
+void transport::Node::RecvTopicUpdates()
 {
   zmsg *msg = new zmsg(*this->subscriber);
   if (this->verbose)
@@ -420,7 +420,7 @@ void Node::RecvTopicUpdates()
 }
 
 //////////////////////////////////////////////////
-void Node::RecvSrvRequest()
+void transport::Node::RecvSrvRequest()
 {
   zmsg *msg = new zmsg(*this->srvReplier);
   if (this->verbose)
@@ -472,7 +472,7 @@ void Node::RecvSrvRequest()
 }
 
 //////////////////////////////////////////////////
-void Node::RecvSrvReply()
+void transport::Node::RecvSrvReply()
 {
   zmsg *msg = new zmsg(*this->srvRequester);
   if (this->verbose)
@@ -503,7 +503,7 @@ void Node::RecvSrvReply()
 }
 
 //////////////////////////////////////////////////
-void Node::SendPendingAsyncSrvCalls()
+void transport::Node::SendPendingAsyncSrvCalls()
 {
   // Check if there are any pending requests ready to send
   for (TopicInfo::Topics_M_it it = this->topicsSrvs.GetTopics().begin();
@@ -541,7 +541,7 @@ void Node::SendPendingAsyncSrvCalls()
 }
 
 //////////////////////////////////////////////////
-int Node::DispatchDiscoveryMsg(char *_msg)
+int transport::Node::DispatchDiscoveryMsg(char *_msg)
 {
   Header header;
   AdvMsg advMsg;
@@ -657,8 +657,8 @@ int Node::DispatchDiscoveryMsg(char *_msg)
 }
 
 //////////////////////////////////////////////////
-int Node::SendAdvertiseMsg(uint8_t _type, const std::string &_topic,
-                     const std::string &_address)
+int transport::Node::SendAdvertiseMsg(uint8_t _type, const std::string &_topic,
+                                      const std::string &_address)
 {
   assert(_topic != "");
 
@@ -690,7 +690,7 @@ int Node::SendAdvertiseMsg(uint8_t _type, const std::string &_topic,
 }
 
 //////////////////////////////////////////////////
-int Node::SendSubscribeMsg(uint8_t _type, const std::string &_topic)
+int transport::Node::SendSubscribeMsg(uint8_t _type, const std::string &_topic)
 {
   assert(_topic != "");
 
