@@ -6,17 +6,35 @@ project (disc_zmq)
 
 add_subdirectory(test)
 
+execute_process(COMMAND pkg-config --modversion protobuf
+  OUTPUT_VARIABLE PROTOBUF_VERSION
+  RESULT_VARIABLE protobuf_modversion_failed)
+
 CHECK_INCLUDE_FILES(ifaddrs.h HAVE_IFADDRS_H)
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/cmake/config.hh.in ${CMAKE_CURRENT_SOURCE_DIR}/config.hh)
 
-add_library(SOCKETS sockets/socket.cc)
+########################################
+if (PROTOBUF_VERSION LESS 2.3.0)
+  BUILD_ERROR("Incorrect version: Transport requires protobuf version 2.3.0 or greater")
+endif()
 
-add_executable(publisher publisher.cc)
-add_executable(subscriber subscriber.cc)
-add_executable(requester requester.cc)
-add_executable(replier replier.cc)
+########################################
+# The Google Protobuf library for message generation + serialization
+find_package(Protobuf REQUIRED)
+if (NOT PROTOBUF_FOUND)
+  BUILD_ERROR ("Missing: Google Protobuf (libprotobuf-dev)")
+endif()
+if (NOT PROTOBUF_PROTOC_EXECUTABLE)
+  BUILD_ERROR ("Missing: Google Protobuf Compiler (protobuf-compiler)")
+endif()
+if (NOT PROTOBUF_PROTOC_LIBRARY)
+  BUILD_ERROR ("Missing: Google Protobuf Compiler Library (libprotoc-dev)")
+endif()
 
-target_link_libraries(${Boost_LIBRARIES} publisher zmq boost_program_options SOCKETS)
-target_link_libraries(${Boost_LIBRARIES} subscriber zmq boost_program_options SOCKETS)
-target_link_libraries(${Boost_LIBRARIES} requester zmq boost_program_options SOCKETS)
-target_link_libraries(${Boost_LIBRARIES} replier zmq boost_program_options SOCKETS)
+#add_library(SOCKETS SHARED sockets/socket.cc)
+
+add_library(disczmq SHARED discZmq.cc sockets/socket.cc netUtils.cc packet.cc topicsInfo.cc)
+target_link_libraries(disczmq
+  protobuf
+  zmq
+)
