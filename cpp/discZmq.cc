@@ -31,6 +31,8 @@
 #include "zmq/zmq.hpp"
 #include "zmq/zmsg.hpp"
 
+using namespace transport;
+
 //  ---------------------------------------------------------------------
 Node::Node(std::string _master, bool _verbose)
 {

@@ -120,7 +120,7 @@ int main(int argc, char *argv[])
     return -1;
 
   // Transport node
-  Node node(master, verbose);
+  transport::Node node(master, verbose);
 
   // Advertise a topic
   rc = node.Advertise(topic);

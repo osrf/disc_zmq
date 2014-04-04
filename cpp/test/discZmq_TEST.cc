@@ -39,7 +39,7 @@ TEST(DiscZmqTest, PubWithoutAdvertise)
 	std::string data = "someData";
 
 	// Subscribe to topic1
-	Node node(master, verbose);
+	transport::Node node(master, verbose);
 
 	// Publish some data on topic1 without advertising it first
 	EXPECT_NE(node.Publish(topic1, data), 0);
@@ -55,7 +55,7 @@ TEST(DiscZmqTest, PubSub)
 	std::string data = "someData";
 
 	// Subscribe to topic1
-	Node node(master, verbose);
+	transport::Node node(master, verbose);
 	EXPECT_EQ(node.Subscribe(topic1, cb), 0);
 	node.SpinOnce();
 

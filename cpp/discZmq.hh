@@ -29,166 +29,169 @@
 #include "zmq/zmq.hpp"
 #include "zmq/zmsg.hpp"
 
-const int MaxRcvStr = 65536; // Longest string to receive
-const std::string InprocAddr = "inproc://local";
-
-class Node
+namespace transport
 {
-  public:
+  const int MaxRcvStr = 65536; // Longest string to receive
+  const std::string InprocAddr = "inproc://local";
 
-    /// \brief Constructor.
-    /// \param[in] _master End point with the master's endpoint.
-    /// \param[in] _verbose true for enabling verbose mode.
-    Node (std::string _master, bool _verbose);
+  class Node
+  {
+    public:
 
-    /// \brief Destructor.
-    virtual ~Node();
+      /// \brief Constructor.
+      /// \param[in] _master End point with the master's endpoint.
+      /// \param[in] _verbose true for enabling verbose mode.
+      Node (std::string _master, bool _verbose);
 
-    void SpinOnce();
+      /// \brief Destructor.
+      virtual ~Node();
 
-    //  ---------------------------------------------------------------------
-    /// \brief Receive messages forever.
-    void Spin();
+      void SpinOnce();
 
-    /// \brief Advertise a new service.
-    /// \param[in] _topic Topic to be advertised.
-    /// \return 0 when success.
-    int Advertise(const std::string &_topic);
+      //  ---------------------------------------------------------------------
+      /// \brief Receive messages forever.
+      void Spin();
 
-    /// \brief Unadvertise a new service.
-    /// \param[in] _topic Topic to be unadvertised.
-    /// \return 0 when success.
-    int UnAdvertise(const std::string &_topic);
+      /// \brief Advertise a new service.
+      /// \param[in] _topic Topic to be advertised.
+      /// \return 0 when success.
+      int Advertise(const std::string &_topic);
 
-    /// \brief Publish data.
-    /// \param[in] _topic Topic to be published.
-    /// \param[in] _data Data to publish.
-    /// \return 0 when success.
-    int Publish(const std::string &_topic,
-                const std::string &_data);
+      /// \brief Unadvertise a new service.
+      /// \param[in] _topic Topic to be unadvertised.
+      /// \return 0 when success.
+      int UnAdvertise(const std::string &_topic);
 
-    /// \brief Publish data.
-    /// \param[in] _topic Topic to be published.
-    /// \param[in] _message protobuf message.
-    /// \return 0 when success.
-    int Publish(const std::string &_topic,
-                const google::protobuf::Message &_message);
+      /// \brief Publish data.
+      /// \param[in] _topic Topic to be published.
+      /// \param[in] _data Data to publish.
+      /// \return 0 when success.
+      int Publish(const std::string &_topic,
+                  const std::string &_data);
 
-    /// \brief Subscribe to a topic registering a callback.
-    /// \param[in] _topic Topic to be subscribed.
-    /// \param[in] _cb Pointer to the callback function.
-    /// \return 0 when success.
-    int Subscribe(const std::string &_topic,
-      void(*_cb)(const std::string &, const std::string &));
+      /// \brief Publish data.
+      /// \param[in] _topic Topic to be published.
+      /// \param[in] _message protobuf message.
+      /// \return 0 when success.
+      int Publish(const std::string &_topic,
+                  const google::protobuf::Message &_message);
 
-    /// \brief Subscribe to a topic registering a callback.
-    /// \param[in] _topic Topic to be unsubscribed.
-    /// \return 0 when success.
-    int UnSubscribe(const std::string &_topic);
+      /// \brief Subscribe to a topic registering a callback.
+      /// \param[in] _topic Topic to be subscribed.
+      /// \param[in] _cb Pointer to the callback function.
+      /// \return 0 when success.
+      int Subscribe(const std::string &_topic,
+        void(*_cb)(const std::string &, const std::string &));
 
-    /// \brief Advertise a new service call registering a callback.
-    /// \param[in] _topic Topic to be advertised.
-    /// \param[in] _cb Pointer to the callback function.
-    /// \return 0 when success.
-    int SrvAdvertise(const std::string &_topic,
-      int(*_cb)(const std::string &, const std::string &, std::string &));
+      /// \brief Subscribe to a topic registering a callback.
+      /// \param[in] _topic Topic to be unsubscribed.
+      /// \return 0 when success.
+      int UnSubscribe(const std::string &_topic);
 
-    /// \brief Unadvertise a service call registering a callback.
-    /// \param[in] _topic Topic to be unadvertised.
-    /// \return 0 when success.
-    int SrvUnAdvertise(const std::string &_topic);
+      /// \brief Advertise a new service call registering a callback.
+      /// \param[in] _topic Topic to be advertised.
+      /// \param[in] _cb Pointer to the callback function.
+      /// \return 0 when success.
+      int SrvAdvertise(const std::string &_topic,
+        int(*_cb)(const std::string &, const std::string &, std::string &));
 
-    /// \brief Request a new service to another component using a blocking call.
-    /// \param[in] _topic Topic requested.
-    /// \param[in] _data Data of the request.
-    /// \param[out] _response Response of the request.
-    /// \return 0 when success.
-    int SrvRequest(const std::string &_topic, const std::string &_data,
-      std::string &_response);
+      /// \brief Unadvertise a service call registering a callback.
+      /// \param[in] _topic Topic to be unadvertised.
+      /// \return 0 when success.
+      int SrvUnAdvertise(const std::string &_topic);
 
-    /// \brief Request a new service call using a non-blocking call.
-    /// \param[in] _topic Topic requested.
-    /// \param[in] _data Data of the request.
-    /// \param[in] _cb Pointer to the callback function.
-    /// \return 0 when success.
-    int SrvRequestAsync(const std::string &_topic, const std::string &_data,
-      void(*_cb)(const std::string &_topic, int rc, const std::string &_rep));
+      /// \brief Request a new service to another component using a blocking call.
+      /// \param[in] _topic Topic requested.
+      /// \param[in] _data Data of the request.
+      /// \param[out] _response Response of the request.
+      /// \return 0 when success.
+      int SrvRequest(const std::string &_topic, const std::string &_data,
+        std::string &_response);
 
-  private:
-    //  ---------------------------------------------------------------------
-    /// \brief Deallocate resources.
-    void Fini();
+      /// \brief Request a new service call using a non-blocking call.
+      /// \param[in] _topic Topic requested.
+      /// \param[in] _data Data of the request.
+      /// \param[in] _cb Pointer to the callback function.
+      /// \return 0 when success.
+      int SrvRequestAsync(const std::string &_topic, const std::string &_data,
+        void(*_cb)(const std::string &_topic, int rc, const std::string &_rep));
 
-    /// \brief Method in charge of receiving the discovery updates.
-    void RecvDiscoveryUpdates();
+    private:
+      //  ---------------------------------------------------------------------
+      /// \brief Deallocate resources.
+      void Fini();
 
-    /// \brief Method in charge of receiving the topic updates.
-    void RecvTopicUpdates();
+      /// \brief Method in charge of receiving the discovery updates.
+      void RecvDiscoveryUpdates();
 
-    /// \brief Method in charge of receiving the service call requests.
-    void RecvSrvRequest();
+      /// \brief Method in charge of receiving the topic updates.
+      void RecvTopicUpdates();
 
-    /// \brief Method in charge of receiving the async service call replies.
-    void RecvSrvReply();
+      /// \brief Method in charge of receiving the service call requests.
+      void RecvSrvRequest();
 
-    /// \brief Send all the pendings asynchronous service calls (if possible)
-    void SendPendingAsyncSrvCalls();
+      /// \brief Method in charge of receiving the async service call replies.
+      void RecvSrvReply();
 
-    /// \brief Parse a discovery message received via the UDP broadcast socket.
-    /// \param[in] _msg Received message.
-    /// \return 0 when success.
-    int DispatchDiscoveryMsg(char *_msg);
+      /// \brief Send all the pendings asynchronous service calls (if possible)
+      void SendPendingAsyncSrvCalls();
 
-    /// \brief Send an ADVERTISE message to the discovery socket.
-    /// \param[in] _type ADV or ADV_SVC.
-    /// \param[in] _topic Topic to be advertised.
-    /// \param[in] _address Address to be advertised with the topic.
-    /// \return 0 when success.
-    int SendAdvertiseMsg(uint8_t _type, const std::string &_topic,
-                         const std::string &_address);
+      /// \brief Parse a discovery message received via the UDP broadcast socket.
+      /// \param[in] _msg Received message.
+      /// \return 0 when success.
+      int DispatchDiscoveryMsg(char *_msg);
 
-    /// \brief Send a SUBSCRIBE message to the discovery socket.
-    /// \param[in] _type SUB or SUB_SVC.
-    /// \param[in] _topic Topic name.
-    /// \return 0 when success.
-    int SendSubscribeMsg(uint8_t _type, const std::string &_topic);
+      /// \brief Send an ADVERTISE message to the discovery socket.
+      /// \param[in] _type ADV or ADV_SVC.
+      /// \param[in] _topic Topic to be advertised.
+      /// \param[in] _address Address to be advertised with the topic.
+      /// \return 0 when success.
+      int SendAdvertiseMsg(uint8_t _type, const std::string &_topic,
+                           const std::string &_address);
 
-    // Master address
-    std::string master;
+      /// \brief Send a SUBSCRIBE message to the discovery socket.
+      /// \param[in] _type SUB or SUB_SVC.
+      /// \param[in] _topic Topic name.
+      /// \return 0 when success.
+      int SendSubscribeMsg(uint8_t _type, const std::string &_topic);
 
-    // Print activity to stdout
-    int verbose;
+      // Master address
+      std::string master;
 
-    // Topic information
-    TopicsInfo topics;
-    TopicsInfo topicsSrvs;
+      // Print activity to stdout
+      int verbose;
 
-    // My pub/sub address
-    std::vector<std::string> myAddresses;
+      // Topic information
+      TopicsInfo topics;
+      TopicsInfo topicsSrvs;
 
-    // My req/rep address
-    std::vector<std::string> mySrvAddresses;
+      // My pub/sub address
+      std::vector<std::string> myAddresses;
 
-    // UDP broadcast thread
-    std::string hostAddr;
-    std::string bcastAddr;
-    int bcastPort;
-    UDPSocket *bcastSock;
+      // My req/rep address
+      std::vector<std::string> mySrvAddresses;
 
-    // 0MQ Sockets
-    zmq::context_t *context;
-    zmq::socket_t *publisher;     //  Socket to send topic updates
-    zmq::socket_t *subscriber;    //  Socket to receive topic updates
-    zmq::socket_t *srvRequester;  //  Socket to send service call requests
-    zmq::socket_t *srvReplier;    //  Socket to receive service call requests
-    std::string tcpEndpoint;
-    std::string srvRequesterEP;
-    std::string srvReplierEP;
-    int timeout;                  //  Request timeout
+      // UDP broadcast thread
+      std::string hostAddr;
+      std::string bcastAddr;
+      int bcastPort;
+      UDPSocket *bcastSock;
 
-    // GUID
-    boost::uuids::uuid guid;
-    std::string guidStr;
-};
+      // 0MQ Sockets
+      zmq::context_t *context;
+      zmq::socket_t *publisher;     //  Socket to send topic updates
+      zmq::socket_t *subscriber;    //  Socket to receive topic updates
+      zmq::socket_t *srvRequester;  //  Socket to send service call requests
+      zmq::socket_t *srvReplier;    //  Socket to receive service call requests
+      std::string tcpEndpoint;
+      std::string srvRequesterEP;
+      std::string srvReplierEP;
+      int timeout;                  //  Request timeout
+
+      // GUID
+      boost::uuids::uuid guid;
+      std::string guidStr;
+  };
+}
 
 #endif

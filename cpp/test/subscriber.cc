@@ -112,7 +112,7 @@ int main(int argc, char *argv[])
     return -1;
 
   // Transport node
-  Node node(master, verbose);
+  transport::Node node(master, verbose);
 
   // Subscribe to the list of topics
   for (int i = 0; i < topics.size(); ++i)

@@ -114,7 +114,7 @@ int main(int argc, char *argv[])
     return -1;
 
   // Transport node
-  Node node(master, verbose);
+  transport::Node node(master, verbose);
 
   // Advertise a service call
   if (node.SrvAdvertise(topic, echo) != 0)
