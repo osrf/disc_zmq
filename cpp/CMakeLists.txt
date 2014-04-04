@@ -4,6 +4,15 @@ include(FindBoost)
 
 project (disc_zmq)
 
+set (DISCZMQ_MAJOR_VERSION 0)
+set (DISCZMQ_MINOR_VERSION 1)
+set (DISCZMQ_PATCH_VERSION 2)
+
+set (DISCZMQ_VERSION ${DISCZMQ_MAJOR_VERSION}.${DISCZMQ_MINOR_VERSION})
+set (DISCZMQ_VERSION_FULL ${DISCZMQ_MAJOR_VERSION}.${DISCZMQ_MINOR_VERSION}.${DISCZMQ_PATCH_VERSION})
+
+message (STATUS "${PROJECT_NAME} version ${SDF_VERSION_FULL}")
+
 set (CMAKE_CXX_FLAGS "-std=c++11")
 
 # Compiler-specific C++11 activation.
@@ -19,6 +28,7 @@ else ()
     message(FATAL_ERROR "Your C++ compiler does not support C++11.")
 endif ()
 
+add_subdirectory(tools)
 add_subdirectory(test)
 
 execute_process(COMMAND pkg-config --modversion protobuf
@@ -64,3 +74,7 @@ add_executable(UNIT_discZmq_TEST discZmq_TEST.cc)
 target_link_libraries(UNIT_packet_TEST disczmq ${Boost_LIBRARIES} gtest gtest_main)
 target_link_libraries(UNIT_topicsInfo_TEST disczmq gtest gtest_main)
 target_link_libraries(UNIT_discZmq_TEST disczmq gtest gtest_main)
+
+# Install the library
+set_target_properties(disczmq PROPERTIES SOVERSION ${DISCZMQ_MAJOR_VERSION} VERSION ${DISCZMQ_VERSION_FULL})
+install (TARGETS disczmq DESTINATION ${CMAKE_INSTALL_PREFIX}/lib COMPONENT shlib)
