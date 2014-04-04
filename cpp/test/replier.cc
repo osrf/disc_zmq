@@ -2,7 +2,7 @@
 #include <iostream>
 #include <string>
 
-#include "discZmq.hh"
+#include "../discZmq.hh"
 
 namespace po = boost::program_options;
 

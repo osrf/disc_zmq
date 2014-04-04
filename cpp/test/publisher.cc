@@ -1,9 +1,8 @@
 #include <boost/program_options.hpp>
 #include <iostream>
 #include <string>
-#include <vector>
 
-#include "discZmq.hh"
+#include "../discZmq.hh"
 
 namespace po = boost::program_options;
 
@@ -19,32 +18,35 @@ void cb(const std::string &_topic, const std::string &_data)
 /// \brief Print program usage.
 void PrintUsage(const po::options_description &_options)
 {
-  std::cout << "Usage: subscriber [options] <topic1> ... <topicN>\n"
+  std::cout << "Usage: publisher [options] <topic> <data> <numMessages>\n"
             << "Positional arguments:\n"
-            << "  <topic1>              Topic to subscribe\n"
-            << "  ...\n"
-            << "  <topicN>              Topic to subscribe\n"
+            << "  <topic>               Topic to publish\n"
+            << "  <data>                Data\n"
+            << "  <numMessages>         Number of messages to send\n"
             << _options << "\n";
 }
 
 //  ---------------------------------------------------------------------
 /// \brief Read the command line arguments.
-int ReadArgs(int argc, char *argv[], bool &_verbose, std::string &_master,
-             std::vector<std::string> &_topics)
+int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfSubscribe,
+  std::string &_master, std::string &_topic, std::string &_data,
+  int &_numMessages)
 {
   // Optional arguments
   po::options_description visibleDesc("Options");
   visibleDesc.add_options()
     ("help,h", "Produce help message")
     ("verbose,v", "Enable verbose mode")
+    ("self-subscribe,s", "Self-subscribe to the topic")
     ("master,m", po::value<std::string>(&_master)->default_value(""),
        "Set the master endpoint");
 
   // Positional arguments
   po::options_description hiddenDesc("Hidden options");
   hiddenDesc.add_options()
-    ("topics", po::value<std::vector<std::string> >(&_topics),
-      "Topics to subscribe");
+    ("topic", po::value<std::string>(&_topic), "Topic to publish")
+    ("data", po::value<std::string>(&_data), "Data")
+    ("num", po::value<int>(&_numMessages), "Number of messages to send");
 
   // All the arguments
   po::options_description desc("Options");
@@ -52,7 +54,7 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, std::string &_master,
 
   // One value per positional argument
   po::positional_options_description positionalDesc;
-  positionalDesc.add("topics", -1);
+  positionalDesc.add("topic", 1).add("data", 1).add("num", 1);
 
   po::variables_map vm;
 
@@ -68,7 +70,8 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, std::string &_master,
     return -1;
   }
 
-  if (vm.count("help")  || !vm.count("topics"))
+  if (vm.count("help")  || !vm.count("topic") ||
+      !vm.count("data") || !vm.count("num"))
   {
     PrintUsage(visibleDesc);
     return -1;
@@ -81,6 +84,10 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, std::string &_master,
   if (vm.count("master"))
     _master = vm["master"].as<std::string>();
 
+  _selfSubscribe = false;
+  if (vm.count("self-subscribe"))
+    _selfSubscribe = true;
+
   return 0;
 }
 
@@ -88,30 +95,39 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, std::string &_master,
 int main(int argc, char *argv[])
 {
   // Read the command line arguments
-  std::string master;
-  bool verbose;
-  std::vector<std::string> topics;
-  if (ReadArgs(argc, argv, verbose, master, topics) != 0)
+  std::string master, topic, data;
+  int numMessages, rc;
+  bool verbose, selfSubscribe;
+  if (ReadArgs(argc, argv, verbose, selfSubscribe, master, topic, data,
+               numMessages) != 0)
     return -1;
 
   // Transport node
   Node node(master, verbose);
 
-  // Subscribe to the list of topics
-  for (int i = 0; i < topics.size(); ++i)
-  {
-    int rc = node.Subscribe(topics[i], cb);
-    if (rc != 0)
-      std::cout << "subscribe for topic [" << topics[i] << "] did not work\n";
+  // Advertise a topic
+  rc = node.Advertise(topic);
+  if (rc != 0)
+    std::cout << "Advertise did not work" << std::endl;
 
-    /*
-    rc = node.UnSubscribe(topics[i]);
+  if (selfSubscribe)
+  {
+    // Self-subscribe to the topic
+    rc = node.Subscribe(topic, cb);
     if (rc != 0)
-      std::cout << "unsubscribe for topic [" << topics[i] << "] did not work\n";
-    */
+      std::cout << "Subscribe did not work" << std::endl;
   }
 
-  node.Spin();
+  // Publish data
+  for (int i = 0; i < numMessages; ++i)
+  {
+    node.Publish(topic, data);
+    node.SpinOnce();
+  }
+
+  // Zzzzzz Zzzzzz
+  std::cout << "\nPress any key to exit" << std::endl;
+  getchar();
 
   return 0;
 }
