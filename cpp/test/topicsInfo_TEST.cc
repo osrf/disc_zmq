@@ -21,31 +21,31 @@
 #include "../topicsInfo.hh"
 #include "gtest/gtest.h"
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 void myCb(const std::string &p1, const std::string &p2)
 {
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 void myReqCb(const std::string &p1, int p2, const std::string &p3)
 {
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 int myRepCb(const std::string &p1, const std::string &p2, std::string &p3)
 {
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 TEST(PacketTest, BasicTopicsInfoAPI)
 {
-  TopicsInfo topics;
+  transport::TopicsInfo topics;
   std::string topic = "test_topic";
   std::string address = "tcp://10.0.0.1:6000";
   std::vector<std::string> v;
-  TopicInfo::Callback cb;
-  TopicInfo::ReqCallback reqCb;
-  TopicInfo::RepCallback repCb;
+  transport::TopicInfo::Callback cb;
+  transport::TopicInfo::ReqCallback reqCb;
+  transport::TopicInfo::RepCallback repCb;
 
   // Check getters with an empty TopicsInfo object
   EXPECT_FALSE(topics.HasTopic(topic));
@@ -120,15 +120,15 @@ TEST(PacketTest, BasicTopicsInfoAPI)
   std::string param1 = "param1";
   std::string param2 = "param2";
   EXPECT_FALSE(topics.DelReq(topic, param1));
-  for (TopicInfo::Topics_M_it it = topics.GetTopics().begin();
+  for (transport::TopicInfo::Topics_M_it it = topics.GetTopics().begin();
        it != topics.GetTopics().end(); ++it)
     EXPECT_FALSE(topics.PendingReqs(it->first));
   topics.AddReq(topic, param1);
-  for (TopicInfo::Topics_M_it it = topics.GetTopics().begin();
+  for (transport::TopicInfo::Topics_M_it it = topics.GetTopics().begin();
        it != topics.GetTopics().end(); ++it)
     EXPECT_TRUE(topics.PendingReqs(it->first));
   topics.AddReq(topic, param2);
-  for (TopicInfo::Topics_M_it it = topics.GetTopics().begin();
+  for (transport::TopicInfo::Topics_M_it it = topics.GetTopics().begin();
        it != topics.GetTopics().end(); ++it)
     EXPECT_TRUE(topics.PendingReqs(it->first));
 
@@ -137,7 +137,7 @@ TEST(PacketTest, BasicTopicsInfoAPI)
   EXPECT_FALSE(topics.DelReq(topic, param1));
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 int main(int argc, char **argv)
 {
   ::testing::InitGoogleTest(&argc, argv);

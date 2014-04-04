@@ -20,18 +20,18 @@
 #include <string>
 #include "packet.hh"
 
-//  ---------------------------------------------------------------------
-Header::Header()
+//////////////////////////////////////////////////
+transport::Header::Header()
   : headerLength(0)
 {
 }
 
-//  ---------------------------------------------------------------------
-Header::Header(const uint16_t _version,
-               const boost::uuids::uuid &_guid,
-               const std::string &_topic,
-               const uint8_t _type,
-               const uint16_t _flags)
+//////////////////////////////////////////////////
+transport::Header::Header(const uint16_t _version,
+                          const boost::uuids::uuid &_guid,
+                          const std::string &_topic,
+                          const uint8_t _type,
+                          const uint16_t _flags)
 {
   this->SetVersion(_version);
   this->SetGuid(_guid);
@@ -41,82 +41,82 @@ Header::Header(const uint16_t _version,
   this->UpdateHeaderLength();
 }
 
-//  ---------------------------------------------------------------------
-uint16_t Header::GetVersion() const
+//////////////////////////////////////////////////
+uint16_t transport::Header::GetVersion() const
 {
   return this->version;
 }
 
-//  ---------------------------------------------------------------------
-boost::uuids::uuid Header::GetGuid() const
+//////////////////////////////////////////////////
+boost::uuids::uuid transport::Header::GetGuid() const
 {
   return this->guid;
 }
 
-//  ---------------------------------------------------------------------
-uint16_t Header::GetTopicLength() const
+//////////////////////////////////////////////////
+uint16_t transport::Header::GetTopicLength() const
 {
   return this->topicLength;
 }
 
-//  ---------------------------------------------------------------------
-std::string Header::GetTopic() const
+//////////////////////////////////////////////////
+std::string transport::Header::GetTopic() const
 {
   return this->topic;
 }
 
-//  ---------------------------------------------------------------------
-uint8_t Header::GetType() const
+//////////////////////////////////////////////////
+uint8_t transport::Header::GetType() const
 {
   return this->type;
 }
 
-//  ---------------------------------------------------------------------
-uint16_t Header::GetFlags() const
+//////////////////////////////////////////////////
+uint16_t transport::Header::GetFlags() const
 {
   return this->flags;
 }
 
-//  ---------------------------------------------------------------------
-void Header::SetVersion(const uint16_t _version)
+//////////////////////////////////////////////////
+void transport::Header::SetVersion(const uint16_t _version)
 {
   this->version = _version;
 }
 
-//  ---------------------------------------------------------------------
-void Header::SetGuid(const boost::uuids::uuid &_guid)
+//////////////////////////////////////////////////
+void transport::Header::SetGuid(const boost::uuids::uuid &_guid)
 {
   this->guid = _guid;
 }
 
-//  ---------------------------------------------------------------------
-void Header::SetTopic(const std::string &_topic)
+//////////////////////////////////////////////////
+void transport::Header::SetTopic(const std::string &_topic)
 {
   this->topic = _topic;
   this->topicLength = this->topic.size();
   this->UpdateHeaderLength();
 }
 
-//  ---------------------------------------------------------------------
-void Header::SetType(const uint8_t _type)
+//////////////////////////////////////////////////
+void transport::Header::SetType(const uint8_t _type)
 {
   this->type = _type;
 }
 
-//  ---------------------------------------------------------------------
-void Header::SetFlags(const uint16_t _flags)
+//////////////////////////////////////////////////
+void transport::Header::SetFlags(const uint16_t _flags)
 {
   this->flags = _flags;
 }
 
-//  ---------------------------------------------------------------------
-int Header::GetHeaderLength()
+//////////////////////////////////////////////////
+int transport::Header::GetHeaderLength()
 {
   return this->headerLength;
 }
 
-//  ---------------------------------------------------------------------
-void Header::Print()
+//////////////////////////////////////////////////
+void transport::Header::Print()
 {
   std::cout << "\t--------------------------------------\n";
   std::cout << "\tHeader:" << std::endl;
@@ -128,8 +128,8 @@ void Header::Print()
   std::cout << "\t\tFlags: " << this->GetFlags() << "\n";
 }
 
-//  ---------------------------------------------------------------------
-size_t Header::Pack(char *_buffer)
+//////////////////////////////////////////////////
+size_t transport::Header::Pack(char *_buffer)
 {
   if (this->headerLength == 0)
     return 0;
@@ -149,8 +149,8 @@ size_t Header::Pack(char *_buffer)
   return this->headerLength;
 }
 
-//  ---------------------------------------------------------------------
-size_t Header::Unpack(const char *_buffer)
+//////////////////////////////////////////////////
+size_t transport::Header::Unpack(const char *_buffer)
 {
   // Read the version
   memcpy(&this->version, _buffer, sizeof(this->version));
@@ -184,49 +184,49 @@ size_t Header::Unpack(const char *_buffer)
   return this->GetHeaderLength();
 }
 
-//  ---------------------------------------------------------------------
-void Header::UpdateHeaderLength()
+//////////////////////////////////////////////////
+void transport::Header::UpdateHeaderLength()
 {
   this->headerLength = sizeof(this->version) + this->guid.size() +
                        sizeof(this->topicLength) + this->topic.size() +
                        sizeof(this->type) + sizeof(this->flags);
 }
 
-//  ---------------------------------------------------------------------
-AdvMsg::AdvMsg()
+//////////////////////////////////////////////////
+transport::AdvMsg::AdvMsg()
   :  msgLength(0)
 {
 }
 
-//  ---------------------------------------------------------------------
-AdvMsg::AdvMsg(const Header &_header,
-       const std::string &_address)
+//////////////////////////////////////////////////
+transport::AdvMsg::AdvMsg(const Header &_header,
+                          const std::string &_address)
 {
   this->SetHeader(_header);
   this->SetAddress(_address);
   this->UpdateMsgLength();
 }
 
-//  ---------------------------------------------------------------------
-Header& AdvMsg::GetHeader()
+//////////////////////////////////////////////////
+transport::Header& transport::AdvMsg::GetHeader()
 {
   return this->header;
 }
 
-//  ---------------------------------------------------------------------
-uint16_t AdvMsg::GetAddressLength() const
+//////////////////////////////////////////////////
+uint16_t transport::AdvMsg::GetAddressLength() const
 {
   return this->addressLength;
 }
 
-//  ---------------------------------------------------------------------
-std::string AdvMsg::GetAddress() const
+//////////////////////////////////////////////////
+std::string transport::AdvMsg::GetAddress() const
 {
   return this->address;
 }
 
-//  ---------------------------------------------------------------------
-void AdvMsg::SetHeader(const Header &_header)
+//////////////////////////////////////////////////
+void transport::AdvMsg::SetHeader(const Header &_header)
 {
   this->header = _header;
   if (_header.GetType() != ADV && _header.GetType() != ADV_SVC)
@@ -235,31 +235,31 @@ void AdvMsg::SetHeader(const Header &_header)
               << " or ADV_SVC. Are you sure you want to do this?\n";
 }
 
-//  ---------------------------------------------------------------------
-void AdvMsg::SetAddress(const std::string &_address)
+//////////////////////////////////////////////////
+void transport::AdvMsg::SetAddress(const std::string &_address)
 {
   this->address = _address;
   this->addressLength = this->address.size();
   this->UpdateMsgLength();
 }
 
-//  ---------------------------------------------------------------------
-size_t AdvMsg::GetMsgLength()
+//////////////////////////////////////////////////
+size_t transport::AdvMsg::GetMsgLength()
 {
   return this->header.GetHeaderLength() + sizeof(this->addressLength) +
          this->address.size();
 }
 
-//  ---------------------------------------------------------------------
-void AdvMsg::PrintBody()
+//////////////////////////////////////////////////
+void transport::AdvMsg::PrintBody()
 {
   std::cout << "\tBody:" << std::endl;
   std::cout << "\t\tAddr size: " << this->GetAddressLength() << std::endl;
   std::cout << "\t\tAddress: " << this->GetAddress() << std::endl;
 }
 
-//  ---------------------------------------------------------------------
-size_t AdvMsg::Pack(char *_buffer)
+//////////////////////////////////////////////////
+size_t transport::AdvMsg::Pack(char *_buffer)
 {
   if (this->msgLength == 0)
   return 0;
@@ -274,8 +274,8 @@ size_t AdvMsg::Pack(char *_buffer)
   return this->GetMsgLength();
 }
 
-//  ---------------------------------------------------------------------
-size_t AdvMsg::UnpackBody(char *_buffer)
+//////////////////////////////////////////////////
+size_t transport::AdvMsg::UnpackBody(char *_buffer)
 {
   // Read the address length
   memcpy(&this->addressLength, _buffer, sizeof(this->addressLength));
@@ -292,8 +292,8 @@ size_t AdvMsg::UnpackBody(char *_buffer)
   return sizeof(this->addressLength) + this->address.size();
 }
 
-//  ---------------------------------------------------------------------
-void AdvMsg::UpdateMsgLength()
+//////////////////////////////////////////////////
+void transport::AdvMsg::UpdateMsgLength()
 {
   this->msgLength = this->GetHeader().GetHeaderLength() +
     sizeof(this->addressLength) + this->address.size();

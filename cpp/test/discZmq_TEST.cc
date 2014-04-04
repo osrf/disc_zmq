@@ -21,7 +21,7 @@
 
 bool callbackExecuted;
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 /// \brief Function is called everytime a topic update is received.
 void cb(const std::string &_topic, const std::string &_data)
 {
@@ -30,7 +30,7 @@ void cb(const std::string &_topic, const std::string &_data)
   callbackExecuted = true;
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 TEST(DiscZmqTest, PubWithoutAdvertise)
 {
 	std::string master = "";
@@ -45,7 +45,7 @@ TEST(DiscZmqTest, PubWithoutAdvertise)
 	EXPECT_NE(node.Publish(topic1, data), 0);
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 TEST(DiscZmqTest, PubSub)
 {
 	callbackExecuted = false;
@@ -86,7 +86,7 @@ TEST(DiscZmqTest, PubSub)
 	EXPECT_FALSE(callbackExecuted);
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 /*TEST(DiscZmqTest, NPubSub)
 {
 	callbackExecuted = false;
@@ -123,7 +123,7 @@ TEST(DiscZmqTest, PubSub)
 	EXPECT_TRUE(callbackExecuted);
 }*/
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 int main(int argc, char **argv)
 {
   ::testing::InitGoogleTest(&argc, argv);

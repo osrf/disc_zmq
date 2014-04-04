@@ -24,180 +24,210 @@
 #include <string>
 #include <vector>
 
-// Info about a topic for pub/sub
-class TopicInfo
+namespace transport
 {
-  public:
-    // Topic list
-    typedef std::vector<std::string> Topics_L;
+  // Info about a topic for pub/sub
+  class TopicInfo
+  {
+    /// \brief Topic list
+    public: typedef std::vector<std::string> Topics_L;
 
-    typedef boost::function<void (const std::string &,
-                                  const std::string &)> Callback;
-    typedef boost::function<void (const std::string &, int,
-                                  const std::string &)> ReqCallback;
-    typedef boost::function<int (const std::string &, const std::string &,
-                                 std::string &)> RepCallback;
+    /// \brief Callback used for receiving topic updates.
+    public: typedef boost::function<void (const std::string &,
+                                          const std::string &)> Callback;
+    /// \brief Callback used for receiving a service call request.
+    public: typedef boost::function<void (const std::string &, int,
+                                          const std::string &)> ReqCallback;
 
-    typedef std::map<std::string, TopicInfo*> Topics_M;
+    /// \brief Callback used for receving a service call response.
+    public: typedef boost::function<int (const std::string &,
+                                         const std::string &,
+                                         std::string &)> RepCallback;
 
-    typedef Topics_M::iterator Topics_M_it;
+    /// \brief Map used for store all the knowledge about a given topic.
+    public: typedef std::map<std::string, TopicInfo*> Topics_M;
 
-    TopicInfo();
+    /// \brief Iterator for jumping between topic maps.
+    public: typedef Topics_M::iterator Topics_M_it;
 
-    virtual ~TopicInfo();
+    /// \brief Constructor.
+    public: TopicInfo();
 
-  public:
-    Topics_L addresses;
-    bool connected;
-    bool advertisedByMe;
+    /// \brief Destructor.
+    public: virtual ~TopicInfo();
 
-    // Used by pub/sub
-    bool subscribed;
-    Callback cb;
+    /// \brief List of addresses known for a topic.
+    public: Topics_L addresses;
 
-    // Used by service calls
-    bool requested;
-    ReqCallback reqCb;
-    RepCallback repCb;
-    std::list<std::string> pendingReqs;
-};
+    /// \brief Am I connected to the topic?
+    public: bool connected;
 
-class TopicsInfo
-{
-  public:
-  /// \brief Constructor.
-  TopicsInfo();
+    /// \brief Am I advertising this topic?
+    public: bool advertisedByMe;
 
-  /// \brief Destructor.
-  virtual ~TopicsInfo();
+    /// brief Am I subscribed to the topic?
+    public: bool subscribed;
 
-  /// \brief Return if there is some information about a topic stored.
-  /// \param[in] _topic Topic name.
-  /// \return true If there is information about the topic.
-  bool HasTopic(const std::string &_topic);
+    /// brief Callback that will be executed in case of receiving new data.
+    public: Callback cb;
 
-  /// \brief Get the known list of addresses associated to a given topic.
-  /// \param[in] _topic Topic name.
-  /// \param[out] _addresses List of addresses
-  /// \return true when we have info about this topic.
-  bool GetAdvAddresses(const std::string &_topic,
-                       std::vector<std::string> &_addresses);
+    /// brief Is a service call pending?
+    public: bool requested;
 
-  /// \brief Return if an address is registered associated to a given topic.
-  /// \param[in] _topic Topic name.
-  /// \param[in] _address Address to check.
-  /// \return true if the address is registered with the topic.
-  bool HasAdvAddress(const std::string &_topic, const std::string &_address);
+    /// brief Callback to handle service calls requested by other nodes.
+    public: ReqCallback reqCb;
 
-  /// \brief Return true if we are connected to a node advertising the topic.
-  /// \param[in] _topic Topic name.
-  /// \return true if we are connected.
-  bool Connected(const std::string &_topic);
+    /// brief Callback to manage the response of a service call requested by me.
+    public: RepCallback repCb;
 
-  /// \brief Return true if we are subscribed to a node advertising the topic.
-  /// \param[in] _topic Topic name.
-  /// \return true if we are subscribed.
-  bool Subscribed(const std::string &_topic);
+    /// brief List that stores the pending service call requests. Every element
+    /// of the list contains the serialized parameters for each request.
+    public: std::list<std::string> pendingReqs;
+  };
 
-  /// \brief Return true if I am advertising the topic.
-  /// \param[in] _topic Topic name.
-  /// \return true if the topic is advertised by me.
-  bool AdvertisedByMe(const std::string &_topic);
+  class TopicsInfo
+  {
+    /// \brief Constructor.
+    public: TopicsInfo();
 
-  /// \brief Return true if I am requesting the service call associated to
-  /// the topic.
-  /// \param[in] _topic Topic name.
-  /// \return true if the service call associated to the topic is requested.
-  bool Requested(const std::string &_topic);
+    /// \brief Destructor.
+    public: virtual ~TopicsInfo();
 
-  /// \brief Get the callback associated to a topic subscription.
-  /// \param[in] _topic Topic name.
-  /// \param[out] A pointer to the function registered for a topic.
-  /// \return true if there is a callback registered for the topic.
-  bool GetCallback(const std::string &_topic, TopicInfo::Callback &_cb);
+    /// \brief Return if there is some information about a topic stored.
+    /// \param[in] _topic Topic name.
+    /// \return true If there is information about the topic.
+    public: bool HasTopic(const std::string &_topic);
 
-  /// \brief Get the REQ callback associated to a topic subscription.
-  /// \param[in] _topic Topic name.
-  /// \param[out] A pointer to the REQ function registered for a topic.
-  /// \return true if there is a REQ callback registered for the topic.
-  bool GetReqCallback(const std::string &_topic, TopicInfo::ReqCallback &_cb);
+    /// \brief Get the known list of addresses associated to a given topic.
+    /// \param[in] _topic Topic name.
+    /// \param[out] _addresses List of addresses
+    /// \return true when we have info about this topic.
+    public: bool GetAdvAddresses(const std::string &_topic,
+                                 std::vector<std::string> &_addresses);
 
-  /// \brief Get the REP callback associated to a topic subscription.
-  /// \param[in] _topic Topic name.
-  /// \param[out] A pointer to the REP function registered for a topic.
-  /// \return true if there is a REP callback registered for the topic.
-  bool GetRepCallback(const std::string &_topic, TopicInfo::RepCallback &_cb);
+    /// \brief Return if an address is registered associated to a given topic.
+    /// \param[in] _topic Topic name.
+    /// \param[in] _address Address to check.
+    /// \return true if the address is registered with the topic.
+    public: bool HasAdvAddress(const std::string &_topic,
+                               const std::string &_address);
 
-  /// \brief Returns if there are any pending requests in the queue.
-  /// \param[in] _topic Topic name.
-  /// \return true if there is any pending request in the queue.
-  bool PendingReqs(const std::string &_topic);
+    /// \brief Return true if we are connected to a node advertising the topic.
+    /// \param[in] _topic Topic name.
+    /// \return true if we are connected.
+    public: bool Connected(const std::string &_topic);
 
-  /// \brief Add a new address associated to a given topic.
-  /// \param[in] _topic Topic name.
-  /// \param[in] _address New address
-  void AddAdvAddress(const std::string &_topic, const std::string &_address);
+    /// \brief Return true if we are subscribed to a node advertising the topic.
+    /// \param[in] _topic Topic name.
+    /// \return true if we are subscribed.
+    public: bool Subscribed(const std::string &_topic);
 
-  /// \brief Remove an address associated to a given topic.
-  /// \param[in] _topic Topic name.
-  /// \param[int] _address Address to remove.
-  void RemoveAdvAddress(const std::string &_topic, const std::string &_address);
+    /// \brief Return true if I am advertising the topic.
+    /// \param[in] _topic Topic name.
+    /// \return true if the topic is advertised by me.
+    public: bool AdvertisedByMe(const std::string &_topic);
 
-  /// \brief Set a new connected value to a given topic.
-  /// \param[in] _topic Topic name.
-  /// \param[in] _value New value to be assigned to the connected member.
-  void SetConnected(const std::string &_topic, const bool _value);
+    /// \brief Return true if I am requesting the service call associated to
+    /// the topic.
+    /// \param[in] _topic Topic name.
+    /// \return true if the service call associated to the topic is requested.
+    public: bool Requested(const std::string &_topic);
 
-  /// \brief Set a new subscribed value to a given topic.
-  /// \param[in] _topic Topic name.
-  /// \param[in] _value New value to be assigned to the subscribed member.
-  void SetSubscribed(const std::string &_topic, const bool _value);
+    /// \brief Get the callback associated to a topic subscription.
+    /// \param[in] _topic Topic name.
+    /// \param[out] A pointer to the function registered for a topic.
+    /// \return true if there is a callback registered for the topic.
+    public: bool GetCallback(const std::string &_topic,
+                             TopicInfo::Callback &_cb);
 
-  /// \brief Set a new service call request to a given topic.
-  /// \param[in] _topic Topic name.
-  /// \param[in] _value New value to be assigned to the requested member.
-  void SetRequested(const std::string &_topic, const bool _value);
+    /// \brief Get the REQ callback associated to a topic subscription.
+    /// \param[in] _topic Topic name.
+    /// \param[out] A pointer to the REQ function registered for a topic.
+    /// \return true if there is a REQ callback registered for the topic.
+    public: bool GetReqCallback(const std::string &_topic,
+                                TopicInfo::ReqCallback &_cb);
 
-  /// \brief Set a new advertised value to a given topic.
-  /// \param[in] _topic Topic name.
-  /// \param[in] _value New value to be assigned in advertisedByMe member.
-  void SetAdvertisedByMe(const std::string &_topic, const bool _value);
+    /// \brief Get the REP callback associated to a topic subscription.
+    /// \param[in] _topic Topic name.
+    /// \param[out] A pointer to the REP function registered for a topic.
+    /// \return true if there is a REP callback registered for the topic.
+    public: bool GetRepCallback(const std::string &_topic,
+                                TopicInfo::RepCallback &_cb);
 
-  /// \brief Set a new callback associated to a given topic.
-  /// \param[in] _topic Topic name.
-  /// \param[in] _cb New callback.
-  void SetCallback(const std::string &_topic, const TopicInfo::Callback &_cb);
+    /// \brief Returns if there are any pending requests in the queue.
+    /// \param[in] _topic Topic name.
+    /// \return true if there is any pending request in the queue.
+    public: bool PendingReqs(const std::string &_topic);
 
-  /// \brief Set a new REQ callback associated to a given topic.
-  /// \param[in] _topic Topic name.
-  /// \param[in] _cb New callback.
-  void SetReqCallback(const std::string &_topic,
-                      const TopicInfo::ReqCallback &_cb);
+    /// \brief Add a new address associated to a given topic.
+    /// \param[in] _topic Topic name.
+    /// \param[in] _address New address
+    public: void AddAdvAddress(const std::string &_topic,
+                               const std::string &_address);
 
-  /// \brief Set a new REP callback associated to a given topic.
-  /// \param[in] _topic Topic name.
-  /// \param[in] _cb New callback.
-  void SetRepCallback(const std::string &_topic,
-                      const TopicInfo::RepCallback &_cb);
+    /// \brief Remove an address associated to a given topic.
+    /// \param[in] _topic Topic name.
+    /// \param[int] _address Address to remove.
+    public: void RemoveAdvAddress(const std::string &_topic,
+                                  const std::string &_address);
 
-  /// \brief Add a new service call request to the queue.
-  /// \param[in] _topic Topic name.
-  /// \param[in] _data Parameters of the request.
-  void AddReq(const std::string &_topic, const std::string &_data);
+    /// \brief Set a new connected value to a given topic.
+    /// \param[in] _topic Topic name.
+    /// \param[in] _value New value to be assigned to the connected member.
+    public: void SetConnected(const std::string &_topic, const bool _value);
 
-  /// \brief Add a new service call request to the queue.
-  /// \param[in] _topic Topic name.
-  /// \param[out] _data Parameters of the request.
-  /// \return true if a request was removed.
-  bool DelReq(const std::string &_topic, std::string &_data);
+    /// \brief Set a new subscribed value to a given topic.
+    /// \param[in] _topic Topic name.
+    /// \param[in] _value New value to be assigned to the subscribed member.
+    public: void SetSubscribed(const std::string &_topic, const bool _value);
 
-  /// \brief Get a reference to the topics map.
-  /// \return Reference to the topic map.
-  TopicInfo::Topics_M& GetTopics();
+    /// \brief Set a new service call request to a given topic.
+    /// \param[in] _topic Topic name.
+    /// \param[in] _value New value to be assigned to the requested member.
+    public: void SetRequested(const std::string &_topic, const bool _value);
 
-  private:
-    // Hash with the topic/topicInfo information for pub/sub
-    TopicInfo::Topics_M topicsInfo;
-};
+    /// \brief Set a new advertised value to a given topic.
+    /// \param[in] _topic Topic name.
+    /// \param[in] _value New value to be assigned in advertisedByMe member.
+    public: void SetAdvertisedByMe(const std::string &_topic,
+                                   const bool _value);
+
+    /// \brief Set a new callback associated to a given topic.
+    /// \param[in] _topic Topic name.
+    /// \param[in] _cb New callback.
+    public: void SetCallback(const std::string &_topic,
+                             const TopicInfo::Callback &_cb);
+
+    /// \brief Set a new REQ callback associated to a given topic.
+    /// \param[in] _topic Topic name.
+    /// \param[in] _cb New callback.
+    public: void SetReqCallback(const std::string &_topic,
+                                const TopicInfo::ReqCallback &_cb);
+
+    /// \brief Set a new REP callback associated to a given topic.
+    /// \param[in] _topic Topic name.
+    /// \param[in] _cb New callback.
+    public: void SetRepCallback(const std::string &_topic,
+                                const TopicInfo::RepCallback &_cb);
+
+    /// \brief Add a new service call request to the queue.
+    /// \param[in] _topic Topic name.
+    /// \param[in] _data Parameters of the request.
+    public: void AddReq(const std::string &_topic, const std::string &_data);
+
+    /// \brief Add a new service call request to the queue.
+    /// \param[in] _topic Topic name.
+    /// \param[out] _data Parameters of the request.
+    /// \return true if a request was removed.
+    public: bool DelReq(const std::string &_topic, std::string &_data);
+
+    /// \brief Get a reference to the topics map.
+    /// \return Reference to the topic map.
+    public: TopicInfo::Topics_M& GetTopics();
+
+    // Hash with the topic/topicInfo information for pub/sub.
+    private: TopicInfo::Topics_M topicsInfo;
+  };
+}
 
 #endif

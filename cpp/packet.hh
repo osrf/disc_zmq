@@ -41,167 +41,176 @@ static char *msgTypesStr[] = {
     (char*)"SRV_REP_ERROR"
 };
 
-class Header
+namespace transport
 {
-  public:
-  /// \brief Constructor.
-  Header();
+  class Header
+  {
+    /// \brief Constructor.
+    public: Header();
 
-  //  ---------------------------------------------------------------------
-  /// \brief Constructor.
-  /// \param[in] _version Version of the transport library.
-  /// \param[in] _guid Global identifier. Every process has a unique guid.
-  /// \param[in] _topicLength Topic length in bytes.
-  /// \param[in] _topic Topic
-  /// \param[in] _type Message type (ADVERTISE, SUBSCRIPTION, ...)
-  /// \param[in] _flags Optional flags that you want to include in the header.
-  Header(const uint16_t _version,
-         const boost::uuids::uuid &_guid,
-         const std::string &_topic,
-         const uint8_t _type,
-         const uint16_t _flags);
+    /// \brief Constructor.
+    /// \param[in] _version Version of the transport library.
+    /// \param[in] _guid Global identifier. Every process has a unique guid.
+    /// \param[in] _topic Topic
+    /// \param[in] _type Message type (ADVERTISE, SUBSCRIPTION, ...)
+    /// \param[in] _flags Optional flags that you want to include in the header.
+    public: Header(const uint16_t _version,
+                   const boost::uuids::uuid &_guid,
+                   const std::string &_topic,
+                   const uint8_t _type,
+                   const uint16_t _flags);
 
-  /// \brief Get the transport library version.
-  /// \return Transport library version.
-  uint16_t GetVersion() const;
+    /// \brief Get the transport library version.
+    /// \return Transport library version.
+    public: uint16_t GetVersion() const;
 
-  /// \brief Get the guid.
-  /// \return A unique global identifier for every process.
-  boost::uuids::uuid GetGuid() const;
+    /// \brief Get the guid.
+    /// \return A unique global identifier for every process.
+    public: boost::uuids::uuid GetGuid() const;
 
-  /// \brief Get the topic length.
-  /// \return Topic length in bytes.
-  uint16_t GetTopicLength() const;
+    /// \brief Get the topic length.
+    /// \return Topic length in bytes.
+    public: uint16_t GetTopicLength() const;
 
-  /// \brief Get the topic.
-  /// \return Topic name.
-  std::string GetTopic() const;
+    /// \brief Get the topic.
+    /// \return Topic name.
+    public: std::string GetTopic() const;
 
-  /// \brief Get the message type.
-  /// \return Message type (ADVERTISE, SUBSCRIPTION, ...)
-  uint8_t GetType() const;
+    /// \brief Get the message type.
+    /// \return Message type (ADVERTISE, SUBSCRIPTION, ...)
+    public: uint8_t GetType() const;
 
-  /// \brief Get the message flags.
-  /// \return The message flags used for compression or other optional features.
-  uint16_t GetFlags() const;
+    /// \brief Get the message flags.
+    /// \return Message flags used for compression or other optional features.
+    public: uint16_t GetFlags() const;
 
-  /// \brief Set the transport library version.
-  /// \param[in] Transport library version.
-  void SetVersion(const uint16_t _version);
+    /// \brief Set the transport library version.
+    /// \param[in] Transport library version.
+    public: void SetVersion(const uint16_t _version);
 
-  /// \brief Set the guid.
-  /// \param[in] _guid A unique global identifier for every process.
-  void SetGuid(const boost::uuids::uuid &_guid);
+    /// \brief Set the guid.
+    /// \param[in] _guid A unique global identifier for every process.
+    public: void SetGuid(const boost::uuids::uuid &_guid);
 
-  /// \brief Set the topic.
-  /// \param[in] _topic Topic name.
-  void SetTopic(const std::string &_topic);
+    /// \brief Set the topic.
+    /// \param[in] _topic Topic name.
+    public: void SetTopic(const std::string &_topic);
 
-  /// \brief Set the message type.
-  /// \param[in] _type Message type (ADVERTISE, SUBSCRIPTION, ...)
-  void SetType(const uint8_t _type);
+    /// \brief Set the message type.
+    /// \param[in] _type Message type (ADVERTISE, SUBSCRIPTION, ...)
+    public: void SetType(const uint8_t _type);
 
-  /// \brief Set the message flags.
-  /// \param[in] _flags Used for enable compression or other optional features.
-  void SetFlags(const uint16_t _flags);
+    /// \brief Set the message flags.
+    /// \param[in] _flags Used for enable optional features.
+    public: void SetFlags(const uint16_t _flags);
 
-  /// \brief Get the header length.
-  /// \return The header length in bytes.
-  int GetHeaderLength();
+    /// \brief Get the header length.
+    /// \return The header length in bytes.
+    public: int GetHeaderLength();
 
-  /// \brief Print the header.
-  void Print();
+    /// \brief Print the header.
+    public: void Print();
 
-  /// \brief Serialize the header. The caller has ownership of the
-  /// buffer and is responsible for its [de]allocation.
-  /// \param[out] _buffer Destination buffer in which the header
-  /// will be serialized.
-  /// \return Number of bytes serialized.
-  size_t Pack(char *_buffer);
+    /// \brief Serialize the header. The caller has ownership of the
+    /// buffer and is responsible for its [de]allocation.
+    /// \param[out] _buffer Destination buffer in which the header
+    /// will be serialized.
+    /// \return Number of bytes serialized.
+    public: size_t Pack(char *_buffer);
 
-  /// \brief Unserialize the header.
-  /// \param[in] _buffer Input buffer containing the data to be unserialized.
-  size_t Unpack(const char *_buffer);
+    /// \brief Unserialize the header.
+    /// \param[in] _buffer Input buffer containing the data to be unserialized.
+    public: size_t Unpack(const char *_buffer);
 
-  private:
+
     /// \brief Calculate the header length.
-    void UpdateHeaderLength();
+    private: void UpdateHeaderLength();
 
     /// \brief Version of the transport library.
-    uint16_t version;
+    private: uint16_t version;
 
     /// \brief Global identifier. Every process has a unique guid.
-    boost::uuids::uuid guid;
+    private: boost::uuids::uuid guid;
 
     /// \brief Topic length in bytes.
-    uint16_t topicLength;
+    private: uint16_t topicLength;
 
     /// \brief Topic.
-    std::string topic;
+    private:std::string topic;
 
     /// \brief Message type (ADVERTISE, SUBSCRIPTION, ...).
-    uint8_t type;
+    private: uint8_t type;
 
     /// \brief Optional flags that you want to include in the header.
-    uint16_t flags;
+    private: uint16_t flags;
 
     /// \brief Header length.
-    int headerLength;
-};
+    private: int headerLength;
+  };
 
-class AdvMsg
-{
-  public:
+  class AdvMsg
+  {
+
     /// \brief Constructor.
-    AdvMsg();
+    public: AdvMsg();
 
     /// \brief Constructor.
     /// \param[in] _header Message header
     /// \param[in] _address ZeroMQ valid address (e.g., "tcp://10.0.0.1:6000").
-    AdvMsg(const Header &_header, const std::string &_address);
+    public: AdvMsg(const Header &_header, const std::string &_address);
 
-    /// \brief
-    Header& GetHeader();
+    /// \brief Get the message header.
+    /// \return Reference to the message header.
+    public: Header& GetHeader();
 
-    /// \brief
-    uint16_t GetAddressLength() const;
+    /// \brief Get the address length.
+    /// \brief Return the ZMQ address length (num of bytes).
+    public: uint16_t GetAddressLength() const;
 
-    /// \brief
-    std::string GetAddress() const;
+    /// \brief Get the ZMQ address.
+    /// \return Return the ZMQ address.
+    public: std::string GetAddress() const;
 
-    /// \brief
-    void SetHeader(const Header &_header);
+    /// \brief Set the header of the message.
+    /// \param[in] _header Message header.
+    public: void SetHeader(const Header &_header);
 
-    /// \brief
-    void SetAddress(const std::string &_address);
+    /// \brief Set the ZMQ address.
+    /// \param[in] _address ZMQ address to be contained in the message.
+    public: void SetAddress(const std::string &_address);
 
-    /// \brief
-    size_t GetMsgLength();
+    /// \brief Get the total length of the message.
+    /// \return Return the length of the message in bytes.
+    public: size_t GetMsgLength();
 
-    /// \brief
-    void PrintBody();
+    /// \brief Print the message.
+    public: void PrintBody();
 
-    /// \brief
-    size_t Pack(char *_buffer);
+    /// \brief Serialize the AdvMsg.
+    /// \param[out] _buffer Buffer where the message will be serialized.
+    /// \return The length of the serialized message in bytes.
+    public: size_t Pack(char *_buffer);
 
-    /// \brief
-    size_t UnpackBody(char *_buffer);
+    /// \brief Unserialize a stream of bytes into a AdvMsg.
+    /// \param[out] _buffer Unpack the body from the buffer.
+    /// \return The number of bytes from the body.
+    public: size_t UnpackBody(char *_buffer);
 
-  private:
-    /// \brief Calculate the header length.
-    void UpdateMsgLength();
+    /// \brief Update the ADV message length.
+    private: void UpdateMsgLength();
 
     /// \brief Message header
-    Header header;
+    private: Header header;
 
     /// \brief Length of the address contained in this message (bytes).
-    uint16_t addressLength;
+    private: uint16_t addressLength;
 
     /// \brief ZMQ valid address (e.g., "tcp://10.0.0.1:6000").
-    std::string address;
+    private: std::string address;
 
     /// \brief Length of the message in bytes.
-    int msgLength;
-};
+    private: int msgLength;
+  };
+}
 
 #endif

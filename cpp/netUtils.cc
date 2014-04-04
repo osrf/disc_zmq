@@ -29,25 +29,16 @@
 # include <ifaddrs.h>
 #endif
 
-//  ---------------------------------------------------------------------
-// https://github.com/ros/ros_comm/blob/hydro-devel/clients/roscpp/src/
-// libros/network.cpp
-/// \brief Determine if an IP is private.
-/// \param[in] Input IP address.
-/// \return true if the IP address is private.
-bool isPrivateIP(const char *ip)
+//////////////////////////////////////////////////
+bool transport::isPrivateIP(const char *ip)
 {
   bool b = !strncmp("192.168", ip, 7) || !strncmp("10.", ip, 3) ||
            !strncmp("169.254", ip, 7);
   return b;
 }
 
-//  ---------------------------------------------------------------------
-/// \brief Determine if an IP is private.
-/// \param[in] _hostname Hostname
-/// \param[out] _ip IP associated to the input hostname.
-/// \return 0 when success.
-int hostname_to_ip(char * hostname , char* ip)
+//////////////////////////////////////////////////
+int transport::hostname_to_ip(char * hostname , char* ip)
 {
   struct hostent *he;
   struct in_addr **addr_list;
@@ -72,12 +63,8 @@ int hostname_to_ip(char * hostname , char* ip)
   return 1;
 }
 
-//  ---------------------------------------------------------------------
-// https://github.com/ros/ros_comm/blob/hydro-devel/clients/roscpp/src/
-// libros/network.cpp
-/// \brief Determine IP or hostname.
-/// \return The IP or hostname of this host.
-std::string DetermineHost()
+//////////////////////////////////////////////////
+std::string transport::DetermineHost()
 {
   char *ip_env;
   // First, did the user set DZMQ_IP?

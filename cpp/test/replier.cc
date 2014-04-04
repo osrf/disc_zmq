@@ -23,7 +23,7 @@
 
 namespace po = boost::program_options;
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 /// \brief Function is called everytime a service call is requested.
 int echo(const std::string &_topic, const std::string &_data, std::string &_rep)
 {
@@ -33,7 +33,7 @@ int echo(const std::string &_topic, const std::string &_data, std::string &_rep)
   return 0;
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 /// \brief Print program usage.
 void PrintUsage(const po::options_description &_options)
 {
@@ -43,7 +43,7 @@ void PrintUsage(const po::options_description &_options)
             << _options << "\n";
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 /// \brief Read the command line arguments.
 int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfCall,
   std::string &_master, std::string &_topic)
@@ -104,7 +104,7 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfCall,
   return 0;
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 int main(int argc, char *argv[])
 {
   // Read the command line arguments

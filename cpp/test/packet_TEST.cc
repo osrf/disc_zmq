@@ -21,14 +21,14 @@
 #include "../packet.hh"
 #include "gtest/gtest.h"
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 TEST(PacketTest, BasicHeaderAPI)
 {
   boost::uuids::uuid guid = boost::uuids::random_generator()();
   std::string guidStr = boost::lexical_cast<std::string>(guid);
   std::string topic = "topic_test";
 
-  Header header(TRNSP_VERSION, guid, topic, ADV, 0);
+  transport::Header header(TRNSP_VERSION, guid, topic, ADV, 0);
 
   // Check Header getters
   EXPECT_EQ(header.GetVersion(), TRNSP_VERSION);
@@ -65,7 +65,7 @@ TEST(PacketTest, BasicHeaderAPI)
   EXPECT_EQ(header.GetHeaderLength(), headerLength);
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 TEST(PacketTest, HeaderIO)
 {
   std::string guidStr;
@@ -75,13 +75,13 @@ TEST(PacketTest, HeaderIO)
   std::string topic = "topic_test";
 
   // Pack a Header
-  Header header(TRNSP_VERSION, guid, topic, ADV_SVC, 2);
+  transport::Header header(TRNSP_VERSION, guid, topic, ADV_SVC, 2);
   char *buffer = new char[header.GetHeaderLength()];
   size_t bytes = header.Pack(buffer);
   EXPECT_EQ(bytes, header.GetHeaderLength());
 
   // Unpack the Header
-  Header otherHeader;
+  transport::Header otherHeader;
   otherHeader.Unpack(buffer);
   delete[] buffer;
 
@@ -97,19 +97,19 @@ TEST(PacketTest, HeaderIO)
   EXPECT_EQ(header.GetHeaderLength(), otherHeader.GetHeaderLength());
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 TEST(PacketTest, BasicAdvMsgAPI)
 {
   boost::uuids::uuid guid = boost::uuids::random_generator()();
   std::string otherGuidStr = boost::lexical_cast<std::string>(guid);
   std::string topic = "topic_test";
 
-  Header otherHeader(TRNSP_VERSION, guid, topic, ADV, 3);
+  transport::Header otherHeader(TRNSP_VERSION, guid, topic, ADV, 3);
   std::string address = "tcp://10.0.0.1:6000";
-  AdvMsg advMsg(otherHeader, address);
+  transport::AdvMsg advMsg(otherHeader, address);
 
   // Check AdvMsg getters
-  Header header = advMsg.GetHeader();
+  transport::Header header = advMsg.GetHeader();
   EXPECT_EQ(header.GetVersion(), otherHeader.GetVersion());
   std::string guidStr = boost::lexical_cast<std::string>(header.GetGuid());
   EXPECT_EQ(guidStr, otherGuidStr);
@@ -130,7 +130,7 @@ TEST(PacketTest, BasicAdvMsgAPI)
   topic = "a_new_topic_test";
 
   // Check AdvMsg setters
-  Header anotherHeader(TRNSP_VERSION + 1, guid, topic, ADV_SVC, 3);
+  transport::Header anotherHeader(TRNSP_VERSION + 1, guid, topic, ADV_SVC, 3);
   advMsg.SetHeader(anotherHeader);
   header = advMsg.GetHeader();
   EXPECT_EQ(header.GetVersion(), TRNSP_VERSION + 1);
@@ -150,23 +150,23 @@ TEST(PacketTest, BasicAdvMsgAPI)
   EXPECT_EQ(advMsg.GetAddress(), address);
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 TEST(PacketTest, AdvMsgIO)
 {
   boost::uuids::uuid guid = boost::uuids::random_generator()();
   std::string topic = "topic_test";
 
   // Pack an AdvMsg
-  Header otherHeader(TRNSP_VERSION, guid, topic, ADV, 3);
+  transport::Header otherHeader(TRNSP_VERSION, guid, topic, ADV, 3);
   std::string address = "tcp://10.0.0.1:6000";
-  AdvMsg advMsg(otherHeader, address);
+  transport::AdvMsg advMsg(otherHeader, address);
   char *buffer = new char[advMsg.GetMsgLength()];
   size_t bytes = advMsg.Pack(buffer);
   EXPECT_EQ(bytes, advMsg.GetMsgLength());
 
   // Unpack an AdvMsg
-  Header header;
-  AdvMsg otherAdvMsg;
+  transport::Header header;
+  transport::AdvMsg otherAdvMsg;
   size_t headerBytes = header.Unpack(buffer);
   EXPECT_EQ(headerBytes, header.GetHeaderLength());
   otherAdvMsg.SetHeader(header);
@@ -185,7 +185,7 @@ TEST(PacketTest, AdvMsgIO)
             otherAdvMsg.GetHeader().GetHeaderLength());
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 int main(int argc, char **argv)
 {
   ::testing::InitGoogleTest(&argc, argv);

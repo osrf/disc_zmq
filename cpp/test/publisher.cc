@@ -23,7 +23,7 @@
 
 namespace po = boost::program_options;
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 /// \brief Function is called everytime a topic update is received.
 void cb(const std::string &_topic, const std::string &_data)
 {
@@ -31,7 +31,7 @@ void cb(const std::string &_topic, const std::string &_data)
   std::cout << "\nCallback [" << _topic << "][" << _data << "]" << std::endl;
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 /// \brief Print program usage.
 void PrintUsage(const po::options_description &_options)
 {
@@ -43,7 +43,7 @@ void PrintUsage(const po::options_description &_options)
             << _options << "\n";
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 /// \brief Read the command line arguments.
 int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfSubscribe,
   std::string &_master, std::string &_topic, std::string &_data,
@@ -108,7 +108,7 @@ int ReadArgs(int argc, char *argv[], bool &_verbose, bool &_selfSubscribe,
   return 0;
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 int main(int argc, char *argv[])
 {
   // Read the command line arguments
