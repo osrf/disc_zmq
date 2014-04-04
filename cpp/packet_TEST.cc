@@ -18,7 +18,7 @@
 #include <limits.h>
 #include <boost/lexical_cast.hpp>
 
-#include "../packet.hh"
+#include "packet.hh"
 #include "gtest/gtest.h"
 
 //////////////////////////////////////////////////

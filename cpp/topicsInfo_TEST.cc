@@ -18,7 +18,7 @@
 #include <limits.h>
 #include <string>
 #include <vector>
-#include "../topicsInfo.hh"
+#include "topicsInfo.hh"
 #include "gtest/gtest.h"
 
 //////////////////////////////////////////////////

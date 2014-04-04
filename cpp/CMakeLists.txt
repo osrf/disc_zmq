@@ -31,10 +31,21 @@ if (NOT PROTOBUF_PROTOC_LIBRARY)
   BUILD_ERROR ("Missing: Google Protobuf Compiler Library (libprotoc-dev)")
 endif()
 
-#add_library(SOCKETS SHARED sockets/socket.cc)
-
+# Create the transport shared library
 add_library(disczmq SHARED discZmq.cc sockets/socket.cc netUtils.cc packet.cc topicsInfo.cc)
 target_link_libraries(disczmq
   protobuf
   zmq
 )
+
+# Unit tests
+enable_testing()
+include_directories(${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR})
+
+add_executable(UNIT_packet_TEST packet_TEST.cc)
+add_executable(UNIT_topicsInfo_TEST topicsInfo_TEST.cc)
+add_executable(UNIT_discZmq_TEST discZmq_TEST.cc)
+
+target_link_libraries(UNIT_packet_TEST disczmq ${Boost_LIBRARIES} gtest gtest_main)
+target_link_libraries(UNIT_topicsInfo_TEST disczmq gtest gtest_main)
+target_link_libraries(UNIT_discZmq_TEST disczmq gtest gtest_main)

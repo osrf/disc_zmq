@@ -32,7 +32,7 @@ void cb(const std::string &_topic, const std::string &_data)
   std::cout << "\nCallback [" << _topic << "][" << _data << "]" << std::endl;
 }
 
-//  ---------------------------------------------------------------------
+//////////////////////////////////////////////////
 /// \brief Print program usage.
 void PrintUsage(const po::options_description &_options)
 {

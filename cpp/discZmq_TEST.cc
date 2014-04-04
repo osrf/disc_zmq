@@ -16,7 +16,7 @@
 */
 
 #include <limits.h>
-#include "../discZmq.hh"
+#include "discZmq.hh"
 #include "gtest/gtest.h"
 
 bool callbackExecuted;
