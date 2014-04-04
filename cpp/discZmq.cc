@@ -369,7 +369,8 @@ void Node::RecvDiscoveryUpdates()
   try
   {
     bytes = this->bcastSock->recvFrom(rcvStr, MaxRcvStr, srcAddr, srcPort);
-  } catch(const SocketException &e)
+  }
+  catch(const SocketException &e)
   {
     cerr << "Exception receiving from the UDP socket: " << e.what() << endl;
     return;
@@ -676,7 +677,9 @@ int Node::SendAdvertiseMsg(uint8_t _type, const std::string &_topic,
   {
     this->bcastSock->sendTo(buffer, advMsg.GetMsgLength(),
       this->bcastAddr, this->bcastPort);
-  } catch(const SocketException &e) {
+  }
+  catch(const SocketException &e)
+  {
     cerr << "Exception sending an ADV msg: " << e.what() << endl;
     delete[] buffer;
     return -1;
@@ -704,7 +707,9 @@ int Node::SendSubscribeMsg(uint8_t _type, const std::string &_topic)
   {
     this->bcastSock->sendTo(buffer, header.GetHeaderLength(),
       this->bcastAddr, this->bcastPort);
-  } catch(SocketException &e) {
+  }
+  catch(const SocketException &e)
+  {
     cerr << "Exception sending a SUB msg: " << e.what() << endl;
     delete[] buffer;
     return -1;
