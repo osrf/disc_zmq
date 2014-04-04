@@ -1,10 +1,27 @@
-#include <boost/algorithm/string.hpp>
+/*
+ * Copyright (C) 2014 Open Source Robotics Foundation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+*/
+
 #include <boost/lexical_cast.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <google/protobuf/message.h>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "discZmq.hh"
 #include "netUtils.hh"
@@ -15,12 +32,12 @@
 #include "zmq/zmsg.hpp"
 
 //  ---------------------------------------------------------------------
-Node::Node (std::string _master, bool _verbose)
+Node::Node(std::string _master, bool _verbose)
 {
   char bindEndPoint[1024];
 
   // Initialize random seed
-  srand (time(NULL));
+  srand(time(NULL));
 
   // Required 0mq minimum version
   s_version_assert(2, 1);
@@ -61,7 +78,7 @@ Node::Node (std::string _master, bool _verbose)
     this->srvReplierEP = bindEndPoint;
     this->mySrvAddresses.push_back(this->srvReplierEP);
   }
-  catch (const zmq::error_t& ze)
+  catch(const zmq::error_t& ze)
   {
      std::cerr << "Error: " << ze.what() << std::endl;
      this->Fini();
@@ -91,7 +108,7 @@ void Node::SpinOnce()
   this->SendPendingAsyncSrvCalls();
 
   //  Poll socket for a reply, with timeout
-  zmq::pollitem_t items [] = {
+  zmq::pollitem_t items[] = {
     { *this->subscriber, 0, ZMQ_POLLIN, 0 },
     { *this->srvReplier, 0, ZMQ_POLLIN, 0 },
     { 0, this->bcastSock->sockDesc, ZMQ_POLLIN, 0 },
@@ -100,13 +117,13 @@ void Node::SpinOnce()
   zmq::poll(&items[0], sizeof(items) / sizeof(items[0]), this->timeout);
 
   //  If we got a reply, process it
-  if (items [0].revents & ZMQ_POLLIN)
+  if (items[0].revents & ZMQ_POLLIN)
     this->RecvTopicUpdates();
-  else if (items [1].revents & ZMQ_POLLIN)
+  else if (items[1].revents & ZMQ_POLLIN)
     this->RecvSrvRequest();
-  else if (items [2].revents & ZMQ_POLLIN)
+  else if (items[2].revents & ZMQ_POLLIN)
     this->RecvDiscoveryUpdates();
-  else if (items [3].revents & ZMQ_POLLIN)
+  else if (items[3].revents & ZMQ_POLLIN)
     this->RecvSrvReply();
 }
 
@@ -287,16 +304,16 @@ int Node::SrvRequest(const std::string &_topic, const std::string &_data,
     std::cout << "\nRequest (" << _topic << ")" << std::endl;
     msg.dump();
   }
-  msg.send (*this->srvRequester);
+  msg.send(*this->srvRequester);
 
   // Poll socket for a reply, with timeout
-  zmq::pollitem_t items [] = { { *this->srvRequester, 0, ZMQ_POLLIN, 0 } };
+  zmq::pollitem_t items[] = { { *this->srvRequester, 0, ZMQ_POLLIN, 0 } };
   zmq::poll(items, 1, this->timeout);
 
   //  If we got a reply, process it
-  if (items [0].revents & ZMQ_POLLIN)
+  if (items[0].revents & ZMQ_POLLIN)
   {
-    zmsg *reply = new zmsg (*this->srvRequester);
+    zmsg *reply = new zmsg(*this->srvRequester);
 
     std::string((char*)reply->pop_front().c_str());
     std::string((char*)reply->pop_front().c_str());
@@ -350,7 +367,7 @@ void Node::RecvDiscoveryUpdates()
   try
   {
     bytes = this->bcastSock->recvFrom(rcvStr, MaxRcvStr, srcAddr, srcPort);
-  } catch (SocketException &e)
+  } catch(const SocketException &e)
   {
     cerr << "Exception receiving from the UDP socket: " << e.what() << endl;
     return;
@@ -367,7 +384,7 @@ void Node::RecvDiscoveryUpdates()
 //  ---------------------------------------------------------------------
 void Node::RecvTopicUpdates()
 {
-  zmsg *msg = new zmsg (*this->subscriber);
+  zmsg *msg = new zmsg(*this->subscriber);
   if (this->verbose)
   {
     std::cout << "\nReceived topic update" << std::endl;
@@ -402,7 +419,7 @@ void Node::RecvTopicUpdates()
 //  ---------------------------------------------------------------------
 void Node::RecvSrvRequest()
 {
-  zmsg *msg = new zmsg (*this->srvReplier);
+  zmsg *msg = new zmsg(*this->srvReplier);
   if (this->verbose)
   {
     std::cout << "\nReceived service request" << std::endl;
@@ -443,7 +460,7 @@ void Node::RecvSrvRequest()
       std::cout << "\nResponse (" << topic << ")" << std::endl;
       reply.dump();
     }
-    reply.send (*this->srvReplier);
+    reply.send(*this->srvReplier);
   }
   else
   {
@@ -454,7 +471,7 @@ void Node::RecvSrvRequest()
 //  ---------------------------------------------------------------------
 void Node::RecvSrvReply()
 {
-  zmsg *msg = new zmsg (*this->srvRequester);
+  zmsg *msg = new zmsg(*this->srvRequester);
   if (this->verbose)
   {
     std::cout << "\nReceived async service reply" << std::endl;
@@ -487,7 +504,7 @@ void Node::SendPendingAsyncSrvCalls()
 {
   // Check if there are any pending requests ready to send
   for (TopicInfo::Topics_M_it it = this->topicsSrvs.GetTopics().begin();
-       it != this->topicsSrvs.GetTopics().end(); it++)
+       it != this->topicsSrvs.GetTopics().end(); ++it)
   {
     std::string topic = it->first;
 
@@ -515,7 +532,7 @@ void Node::SendPendingAsyncSrvCalls()
         std::cout << "\nAsync request [" << topic << "][" << data << "]\n";
         msg.dump();
       }
-      msg.send (*this->srvRequester);
+      msg.send(*this->srvRequester);
     }
   }
 }
@@ -563,7 +580,7 @@ int Node::DispatchDiscoveryMsg(char *_msg)
           if (this->verbose)
             std::cout << "\t* Connected to [" << address << "]\n";
         }
-        catch (const zmq::error_t& ze)
+        catch(const zmq::error_t& ze)
         {
           std::cout << "Error connecting [" << ze.what() << "]\n";
         }
@@ -594,7 +611,7 @@ int Node::DispatchDiscoveryMsg(char *_msg)
           if (this->verbose)
             std::cout << "\t* Connected to [" << address << "]\n";
         }
-        catch (const zmq::error_t& ze)
+        catch(const zmq::error_t& ze)
         {
           std::cout << "Error connecting [" << ze.what() << "]\n";
         }
@@ -657,7 +674,7 @@ int Node::SendAdvertiseMsg(uint8_t _type, const std::string &_topic,
   {
     this->bcastSock->sendTo(buffer, advMsg.GetMsgLength(),
       this->bcastAddr, this->bcastPort);
-  } catch (SocketException &e) {
+  } catch(const SocketException &e) {
     cerr << "Exception sending an ADV msg: " << e.what() << endl;
     delete[] buffer;
     return -1;
@@ -685,7 +702,7 @@ int Node::SendSubscribeMsg(uint8_t _type, const std::string &_topic)
   {
     this->bcastSock->sendTo(buffer, header.GetHeaderLength(),
       this->bcastAddr, this->bcastPort);
-  } catch (SocketException &e) {
+  } catch(SocketException &e) {
     cerr << "Exception sending a SUB msg: " << e.what() << endl;
     delete[] buffer;
     return -1;

@@ -1,13 +1,27 @@
-#ifndef __NET_UTILS_HH_INCLUDED__
-#define __NET_UTILS_HH_INCLUDED__
+/*
+ * Copyright (C) 2014 Open Source Robotics Foundation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+*/
 
 #include <arpa/inet.h>
-#include <cstring>
 #include <netdb.h>
-#include <iostream>
 #include <stdlib.h>
+#include <unistd.h>
+#include <cstring>
+#include <iostream>
 #include <string>
-
 #include "config.hh"
 #include "netUtils.hh"
 
@@ -41,18 +55,18 @@ int hostname_to_ip(char * hostname , char* ip)
 
   if ( (he = gethostbyname( hostname ) ) == NULL)
   {
-      // get the host info
-      herror("gethostbyname");
-      return 1;
+    // get the host info
+    herror("gethostbyname");
+    return 1;
   }
 
   addr_list = (struct in_addr **) he->h_addr_list;
 
-  for(i = 0; addr_list[i] != NULL; i++)
+  for (i = 0; addr_list[i] != NULL; ++i)
   {
-      //Return the first one;
-      strcpy(ip , inet_ntoa(*addr_list[i]) );
-      return 0;
+    // Return the first one;
+    strcpy(ip, inet_ntoa(*addr_list[i]) );
+    return 0;
   }
 
   return 1;
@@ -83,7 +97,7 @@ std::string DetermineHost()
     std::cerr << "determineIP: gethostname failed" << std::endl;
 
   // We don't want localhost to be our ip
-  else if(strlen(host) && strcmp("localhost", host))
+  else if (strlen(host) && strcmp("localhost", host))
   {
     char hostIP[INET_ADDRSTRLEN];
     strcat(host, ".local");
@@ -99,8 +113,8 @@ std::string DetermineHost()
   int rc;
   if ((rc = getifaddrs(&ifp)) < 0)
   {
-   std::cerr << "error in getifaddrs: " << strerror(rc) << std::endl;
-   exit(-1);
+    std::cerr << "error in getifaddrs: " << strerror(rc) << std::endl;
+    exit(-1);
   }
   char preferred_ip[200] = {0};
   for (ifa = ifp; ifa; ifa = ifa->ifa_next)
@@ -108,7 +122,7 @@ std::string DetermineHost()
     char ip_[200];
     socklen_t salen;
     if (!ifa->ifa_addr)
-      continue; // evidently this interface has no ip address
+      continue;  // evidently this interface has no ip address
     if (ifa->ifa_addr->sa_family == AF_INET)
       salen = sizeof(struct sockaddr_in);
     else if (ifa->ifa_addr->sa_family == AF_INET6)
@@ -123,8 +137,8 @@ std::string DetermineHost()
       continue;
     }
     // prefer non-private IPs over private IPs
-    if (!strcmp("127.0.0.1", ip_) || strchr(ip_,':'))
-      continue; // ignore loopback unless we have no other choice
+    if (!strcmp("127.0.0.1", ip_) || strchr(ip_, ':'))
+      continue;  // ignore loopback unless we have no other choice
     if (ifa->ifa_addr->sa_family == AF_INET6 && !preferred_ip[0])
       strcpy(preferred_ip, ip_);
     else if (isPrivateIP(ip_) && !preferred_ip[0])
@@ -156,5 +170,3 @@ std::string DetermineHost()
   return std::string("127.0.0.1");
 #endif
 }
-
-#endif

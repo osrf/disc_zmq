@@ -1,6 +1,20 @@
-#include <boost/algorithm/string.hpp>
-#include <iostream>
-#include <map>
+/*
+ * Copyright (C) 2014 Open Source Robotics Foundation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+*/
+
 #include <string>
 #include <vector>
 #include "topicsInfo.hh"
@@ -25,7 +39,9 @@ TopicInfo::~TopicInfo()
 }
 
 //  ---------------------------------------------------------------------
-TopicsInfo::TopicsInfo(){};
+TopicsInfo::TopicsInfo()
+{
+}
 
 //  ---------------------------------------------------------------------
 TopicsInfo::~TopicsInfo()
@@ -56,7 +72,8 @@ bool TopicsInfo::GetAdvAddresses(const std::string &_topic,
 }
 
 //  ---------------------------------------------------------------------
-bool TopicsInfo::HasAdvAddress(const std::string &_topic, const std::string &_address)
+bool TopicsInfo::HasAdvAddress(const std::string &_topic,
+                               const std::string &_address)
 {
   if (!this->HasTopic(_topic))
     return false;
@@ -103,7 +120,8 @@ bool TopicsInfo::Requested(const std::string &_topic)
 }
 
 //  ---------------------------------------------------------------------
-bool TopicsInfo::GetCallback(const std::string &_topic, TopicInfo::Callback &_cb)
+bool TopicsInfo::GetCallback(const std::string &_topic,
+                             TopicInfo::Callback &_cb)
 {
   if (!this->HasTopic(_topic))
     return false;
@@ -113,7 +131,8 @@ bool TopicsInfo::GetCallback(const std::string &_topic, TopicInfo::Callback &_cb
 }
 
 //  ---------------------------------------------------------------------
-bool TopicsInfo::GetReqCallback(const std::string &_topic, TopicInfo::ReqCallback &_cb)
+bool TopicsInfo::GetReqCallback(const std::string &_topic,
+                                TopicInfo::ReqCallback &_cb)
 {
   if (!this->HasTopic(_topic))
     return false;
@@ -123,7 +142,8 @@ bool TopicsInfo::GetReqCallback(const std::string &_topic, TopicInfo::ReqCallbac
 }
 
 //  ---------------------------------------------------------------------
-bool TopicsInfo::GetRepCallback(const std::string &_topic, TopicInfo::RepCallback &_cb)
+bool TopicsInfo::GetRepCallback(const std::string &_topic,
+                                TopicInfo::RepCallback &_cb)
 {
   if (!this->HasTopic(_topic))
     return false;
@@ -142,7 +162,8 @@ bool TopicsInfo::PendingReqs(const std::string &_topic)
 }
 
 //  ---------------------------------------------------------------------
-void TopicsInfo::AddAdvAddress(const std::string &_topic, const std::string &_address)
+void TopicsInfo::AddAdvAddress(const std::string &_topic,
+                               const std::string &_address)
 {
   // If we don't have the topic registered, add a new TopicInfo
   if (!this->HasTopic(_topic))
@@ -157,7 +178,8 @@ void TopicsInfo::AddAdvAddress(const std::string &_topic, const std::string &_ad
 }
 
 //  ---------------------------------------------------------------------
-void TopicsInfo::RemoveAdvAddress(const std::string &_topic, const std::string &_address)
+void TopicsInfo::RemoveAdvAddress(const std::string &_topic,
+                                  const std::string &_address)
 {
   // Remove the address if we have the topic
   if (this->HasTopic(_topic))
@@ -222,7 +244,8 @@ void TopicsInfo::SetAdvertisedByMe(const std::string &_topic, const bool _value)
 }
 
 //  ---------------------------------------------------------------------
-void TopicsInfo::SetCallback(const std::string &_topic, const TopicInfo::Callback &_cb)
+void TopicsInfo::SetCallback(const std::string &_topic,
+                             const TopicInfo::Callback &_cb)
 {
   if (!this->HasTopic(_topic))
   {

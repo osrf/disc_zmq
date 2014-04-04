@@ -1,103 +1,118 @@
+/*
+ * Copyright (C) 2014 Open Source Robotics Foundation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+*/
+
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include <cstddef>
-#include <iostream>
-#include <string.h>
+#include <string>
 #include "packet.hh"
 
 //  ---------------------------------------------------------------------
-Header::Header ()
+Header::Header()
   : headerLength(0)
 {
 }
 
 //  ---------------------------------------------------------------------
-Header::Header (const uint16_t _version,
-        const boost::uuids::uuid &_guid,
-        const std::string &_topic,
-        const uint8_t _type,
-        const uint16_t _flags)
+Header::Header(const uint16_t _version,
+               const boost::uuids::uuid &_guid,
+               const std::string &_topic,
+               const uint8_t _type,
+               const uint16_t _flags)
 {
-	this->SetVersion(_version);
-	this->SetGuid(_guid);
-	this->SetTopic(_topic);
-	this->SetType(_type);
-	this->SetFlags(_flags);
-	this->UpdateHeaderLength();
+  this->SetVersion(_version);
+  this->SetGuid(_guid);
+  this->SetTopic(_topic);
+  this->SetType(_type);
+  this->SetFlags(_flags);
+  this->UpdateHeaderLength();
 }
 
 //  ---------------------------------------------------------------------
 uint16_t Header::GetVersion() const
 {
-	return this->version;
+  return this->version;
 }
 
 //  ---------------------------------------------------------------------
 boost::uuids::uuid Header::GetGuid() const
 {
-	return this->guid;
+  return this->guid;
 }
 
 //  ---------------------------------------------------------------------
 uint16_t Header::GetTopicLength() const
 {
-	return this->topicLength;
+  return this->topicLength;
 }
 
 //  ---------------------------------------------------------------------
 std::string Header::GetTopic() const
 {
-	return this->topic;
+  return this->topic;
 }
 
 //  ---------------------------------------------------------------------
 uint8_t Header::GetType() const
 {
-	return this->type;
+  return this->type;
 }
 
 //  ---------------------------------------------------------------------
 uint16_t Header::GetFlags() const
 {
-	return this->flags;
+  return this->flags;
 }
 
 //  ---------------------------------------------------------------------
 void Header::SetVersion(const uint16_t _version)
 {
-	this->version = _version;
+  this->version = _version;
 }
 
 //  ---------------------------------------------------------------------
 void Header::SetGuid(const boost::uuids::uuid &_guid)
 {
-	this->guid = _guid;
+  this->guid = _guid;
 }
 
 //  ---------------------------------------------------------------------
 void Header::SetTopic(const std::string &_topic)
 {
-	this->topic = _topic;
-	this->topicLength = this->topic.size();
-	this->UpdateHeaderLength();
+  this->topic = _topic;
+  this->topicLength = this->topic.size();
+  this->UpdateHeaderLength();
 }
 
 //  ---------------------------------------------------------------------
 void Header::SetType(const uint8_t _type)
 {
-	this->type = _type;
+  this->type = _type;
 }
 
 //  ---------------------------------------------------------------------
 void Header::SetFlags(const uint16_t _flags)
 {
-	this->flags = _flags;
+  this->flags = _flags;
 }
 
 //  ---------------------------------------------------------------------
 int Header::GetHeaderLength()
 {
-	return this->headerLength;
+  return this->headerLength;
 }
 
 //  ---------------------------------------------------------------------
@@ -116,8 +131,8 @@ void Header::Print()
 //  ---------------------------------------------------------------------
 size_t Header::Pack(char *_buffer)
 {
-	if (this->headerLength == 0)
-		return 0;
+  if (this->headerLength == 0)
+    return 0;
 
   memcpy(_buffer, &this->version, sizeof(this->version));
   _buffer += sizeof(this->version);
@@ -137,7 +152,7 @@ size_t Header::Pack(char *_buffer)
 //  ---------------------------------------------------------------------
 size_t Header::Unpack(const char *_buffer)
 {
-	// Read the version
+  // Read the version
   memcpy(&this->version, _buffer, sizeof(this->version));
   _buffer += sizeof(this->version);
 
@@ -172,9 +187,9 @@ size_t Header::Unpack(const char *_buffer)
 //  ---------------------------------------------------------------------
 void Header::UpdateHeaderLength()
 {
-	this->headerLength = sizeof(this->version) + this->guid.size() +
-        						   sizeof(this->topicLength) + this->topic.size() +
-      	  					   sizeof(this->type) + sizeof(this->flags);
+  this->headerLength = sizeof(this->version) + this->guid.size() +
+                       sizeof(this->topicLength) + this->topic.size() +
+                       sizeof(this->type) + sizeof(this->flags);
 }
 
 //  ---------------------------------------------------------------------
@@ -187,52 +202,52 @@ AdvMsg::AdvMsg()
 AdvMsg::AdvMsg(const Header &_header,
        const std::string &_address)
 {
-	this->SetHeader(_header);
-	this->SetAddress(_address);
-	this->UpdateMsgLength();
+  this->SetHeader(_header);
+  this->SetAddress(_address);
+  this->UpdateMsgLength();
 }
 
 //  ---------------------------------------------------------------------
 Header& AdvMsg::GetHeader()
 {
-	return this->header;
+  return this->header;
 }
 
 //  ---------------------------------------------------------------------
 uint16_t AdvMsg::GetAddressLength() const
 {
-	return this->addressLength;
+  return this->addressLength;
 }
 
 //  ---------------------------------------------------------------------
 std::string AdvMsg::GetAddress() const
 {
-	return this->address;
+  return this->address;
 }
 
 //  ---------------------------------------------------------------------
 void AdvMsg::SetHeader(const Header &_header)
 {
-	this->header = _header;
-	if (_header.GetType() != ADV && _header.GetType() != ADV_SVC)
-		std::cerr << "You're trying to use a "
-		          << msgTypesStr[_header.GetType()] << " header inside an ADV"
-		          << " or ADV_SVC. Are you sure you want to do this?\n";
+  this->header = _header;
+  if (_header.GetType() != ADV && _header.GetType() != ADV_SVC)
+    std::cerr << "You're trying to use a "
+              << msgTypesStr[_header.GetType()] << " header inside an ADV"
+              << " or ADV_SVC. Are you sure you want to do this?\n";
 }
 
 //  ---------------------------------------------------------------------
 void AdvMsg::SetAddress(const std::string &_address)
 {
-	this->address = _address;
-	this->addressLength = this->address.size();
-	this->UpdateMsgLength();
+  this->address = _address;
+  this->addressLength = this->address.size();
+  this->UpdateMsgLength();
 }
 
 //  ---------------------------------------------------------------------
 size_t AdvMsg::GetMsgLength()
 {
-	return this->header.GetHeaderLength() + sizeof(this->addressLength) +
-				 this->address.size();
+  return this->header.GetHeaderLength() + sizeof(this->addressLength) +
+         this->address.size();
 }
 
 //  ---------------------------------------------------------------------
@@ -246,23 +261,23 @@ void AdvMsg::PrintBody()
 //  ---------------------------------------------------------------------
 size_t AdvMsg::Pack(char *_buffer)
 {
-	if (this->msgLength == 0)
-	return 0;
+  if (this->msgLength == 0)
+  return 0;
 
-	this->GetHeader().Pack(_buffer);
-	_buffer += this->GetHeader().GetHeaderLength();
+  this->GetHeader().Pack(_buffer);
+  _buffer += this->GetHeader().GetHeaderLength();
 
   memcpy(_buffer, &this->addressLength, sizeof(this->addressLength));
   _buffer += sizeof(this->addressLength);
   memcpy(_buffer, this->address.data(), this->address.size());
 
-	return this->GetMsgLength();
+  return this->GetMsgLength();
 }
 
 //  ---------------------------------------------------------------------
 size_t AdvMsg::UnpackBody(char *_buffer)
 {
-	// Read the address length
+  // Read the address length
   memcpy(&this->addressLength, _buffer, sizeof(this->addressLength));
   _buffer += sizeof(this->addressLength);
 
@@ -280,6 +295,6 @@ size_t AdvMsg::UnpackBody(char *_buffer)
 //  ---------------------------------------------------------------------
 void AdvMsg::UpdateMsgLength()
 {
-	this->msgLength = this->GetHeader().GetHeaderLength() +
-	  sizeof(this->addressLength) + this->address.size();
+  this->msgLength = this->GetHeader().GetHeaderLength() +
+    sizeof(this->addressLength) + this->address.size();
 }

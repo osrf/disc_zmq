@@ -1,4 +1,23 @@
+/*
+ * Copyright (C) 2014 Open Source Robotics Foundation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+*/
+
 #include <limits.h>
+#include <string>
+#include <vector>
 #include "../topicsInfo.hh"
 #include "gtest/gtest.h"
 
@@ -82,12 +101,12 @@ TEST(PacketTest, BasicTopicsInfoAPI)
   EXPECT_TRUE(topics.GetCallback(topic, cb));
   EXPECT_EQ(&myCb, cb);
 
-	// Check SetReqCallback
+  // Check SetReqCallback
   topics.SetReqCallback(topic, myReqCb);
   EXPECT_TRUE(topics.GetReqCallback(topic, reqCb));
   EXPECT_EQ(&myReqCb, reqCb);
 
-	// Check SetRepCallback
+  // Check SetRepCallback
   topics.SetRepCallback(topic, myRepCb);
   EXPECT_TRUE(topics.GetRepCallback(topic, repCb));
   EXPECT_EQ(&myRepCb, repCb);
@@ -103,15 +122,15 @@ TEST(PacketTest, BasicTopicsInfoAPI)
   EXPECT_FALSE(topics.DelReq(topic, param1));
   for (TopicInfo::Topics_M_it it = topics.GetTopics().begin();
        it != topics.GetTopics().end(); ++it)
-  	EXPECT_FALSE(topics.PendingReqs(it->first));
+    EXPECT_FALSE(topics.PendingReqs(it->first));
   topics.AddReq(topic, param1);
   for (TopicInfo::Topics_M_it it = topics.GetTopics().begin();
        it != topics.GetTopics().end(); ++it)
-  	EXPECT_TRUE(topics.PendingReqs(it->first));
+    EXPECT_TRUE(topics.PendingReqs(it->first));
   topics.AddReq(topic, param2);
   for (TopicInfo::Topics_M_it it = topics.GetTopics().begin();
        it != topics.GetTopics().end(); ++it)
-  	EXPECT_TRUE(topics.PendingReqs(it->first));
+    EXPECT_TRUE(topics.PendingReqs(it->first));
 
   EXPECT_TRUE(topics.DelReq(topic, param2));
   EXPECT_TRUE(topics.DelReq(topic, param1));
