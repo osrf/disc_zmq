@@ -34,6 +34,7 @@ void myReqCb(const std::string &p1, int p2, const std::string &p3)
 //////////////////////////////////////////////////
 int myRepCb(const std::string &p1, const std::string &p2, std::string &p3)
 {
+  return 0;
 }
 
 //////////////////////////////////////////////////
@@ -120,15 +121,15 @@ TEST(PacketTest, BasicTopicsInfoAPI)
   std::string param1 = "param1";
   std::string param2 = "param2";
   EXPECT_FALSE(topics.DelReq(topic, param1));
-  for (transport::TopicInfo::Topics_M_it it = topics.GetTopics().begin();
+  for (auto it = topics.GetTopics().begin();
        it != topics.GetTopics().end(); ++it)
     EXPECT_FALSE(topics.PendingReqs(it->first));
   topics.AddReq(topic, param1);
-  for (transport::TopicInfo::Topics_M_it it = topics.GetTopics().begin();
+  for (auto it = topics.GetTopics().begin();
        it != topics.GetTopics().end(); ++it)
     EXPECT_TRUE(topics.PendingReqs(it->first));
   topics.AddReq(topic, param2);
-  for (transport::TopicInfo::Topics_M_it it = topics.GetTopics().begin();
+  for (auto it = topics.GetTopics().begin();
        it != topics.GetTopics().end(); ++it)
     EXPECT_TRUE(topics.PendingReqs(it->first));
 

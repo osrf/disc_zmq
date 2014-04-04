@@ -47,9 +47,6 @@ namespace transport
     /// \brief Map used for store all the knowledge about a given topic.
     public: typedef std::map<std::string, TopicInfo*> Topics_M;
 
-    /// \brief Iterator for jumping between topic maps.
-    public: typedef Topics_M::iterator Topics_M_it;
-
     /// \brief Constructor.
     public: TopicInfo();
 

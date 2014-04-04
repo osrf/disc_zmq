@@ -46,8 +46,7 @@ transport::TopicsInfo::TopicsInfo()
 //////////////////////////////////////////////////
 transport::TopicsInfo::~TopicsInfo()
 {
-  for (TopicInfo::Topics_M_it it = this->GetTopics().begin();
-    it != this->GetTopics().end(); ++it)
+  for (auto it = this->GetTopics().begin(); it != this->GetTopics().end(); ++it)
     delete it->second;
 
   this->topicsInfo.clear();

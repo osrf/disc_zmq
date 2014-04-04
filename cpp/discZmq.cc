@@ -143,8 +143,7 @@ int transport::Node::Advertise(const std::string &_topic)
 
   this->topics.SetAdvertisedByMe(_topic, true);
 
-  std::vector<std::string>::iterator it;
-  for (it = this->myAddresses.begin(); it != this->myAddresses.end(); ++it)
+  for (auto it = this->myAddresses.begin(); it != this->myAddresses.end(); ++it)
     this->SendAdvertiseMsg(ADV, _topic, *it);
 
   return 0;
@@ -251,8 +250,7 @@ int transport::Node::SrvAdvertise(const std::string &_topic,
   if (this->verbose)
     std::cout << "\nAdvertise srv call(" << _topic << ")\n";
 
-  std::vector<std::string>::iterator it;
-  for (it = this->mySrvAddresses.begin();
+  for (auto it = this->mySrvAddresses.begin();
        it != this->mySrvAddresses.end(); ++it)
     this->SendAdvertiseMsg(ADV_SVC, _topic, *it);
 
@@ -447,7 +445,7 @@ void transport::Node::RecvSrvRequest()
     TopicInfo::RepCallback cb;
     std::string response;
     if (this->topicsSrvs.GetRepCallback(topic, cb))
-      int rc = cb(topic, data, response);
+      cb(topic, data, response);
     else
       std::cerr << "I don't have a REP cback for topic [" << topic << "]\n";
 
@@ -506,7 +504,7 @@ void transport::Node::RecvSrvReply()
 void transport::Node::SendPendingAsyncSrvCalls()
 {
   // Check if there are any pending requests ready to send
-  for (TopicInfo::Topics_M_it it = this->topicsSrvs.GetTopics().begin();
+  for (auto it = this->topicsSrvs.GetTopics().begin();
        it != this->topicsSrvs.GetTopics().end(); ++it)
   {
     std::string topic = it->first;
@@ -547,7 +545,6 @@ int transport::Node::DispatchDiscoveryMsg(char *_msg)
   AdvMsg advMsg;
   std::string address;
   char *pBody = _msg;
-  std::vector<std::string>::iterator it;
 
   header.Unpack(_msg);
   pBody += header.GetHeaderLength();
@@ -627,7 +624,7 @@ int transport::Node::DispatchDiscoveryMsg(char *_msg)
       if (this->topics.AdvertisedByMe(topic))
       {
         // Send to the broadcast socket an ADVERTISE message
-        for (it = this->myAddresses.begin();
+        for (auto it = this->myAddresses.begin();
              it != this->myAddresses.end(); ++it)
           this->SendAdvertiseMsg(ADV, topic, *it);
       }
@@ -639,7 +636,7 @@ int transport::Node::DispatchDiscoveryMsg(char *_msg)
       if (this->topicsSrvs.AdvertisedByMe(topic))
       {
         // Send to the broadcast socket an ADV_SVC message
-        for (it = this->mySrvAddresses.begin();
+        for (auto it = this->mySrvAddresses.begin();
              it != this->mySrvAddresses.end(); ++it)
         {
           this->SendAdvertiseMsg(ADV_SVC, topic, *it);

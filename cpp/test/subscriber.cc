@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
   transport::Node node(master, verbose);
 
   // Subscribe to the list of topics
-  for (int i = 0; i < topics.size(); ++i)
+  for (size_t i = 0; i < topics.size(); ++i)
   {
     int rc = node.Subscribe(topics[i], cb);
     if (rc != 0)
