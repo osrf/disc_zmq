@@ -15,9 +15,9 @@
  *
 */
 
-#include <boost/lexical_cast.hpp>
-#include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/uuid_io.hpp>
+//#include <boost/lexical_cast.hpp>
+//#include <boost/uuid/uuid_generators.hpp>
+//#include <boost/uuid/uuid_io.hpp>
 #include <google/protobuf/message.h>
 #include <iostream>
 #include <string>
@@ -53,7 +53,9 @@ transport::Node::Node(std::string _master, bool _verbose)
   this->hostAddr = DetermineHost();
 
   // Create the GUID
-  this->guid = boost::uuids::random_generator()();
+  uuid_t guid;
+  uuid_generate(guid);
+  // this->guid = boost::uuids::random_generator()();
   this->guidStr = boost::lexical_cast<std::string>(this->guid);
 
   // 0MQ

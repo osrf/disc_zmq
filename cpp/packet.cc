@@ -15,10 +15,13 @@
  *
 */
 
-#include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/uuid_io.hpp>
+//#include <boost/uuid/uuid_generators.hpp>
+//#include <boost/uuid/uuid_io.hpp>
+#include <uuid/uuid.h>
 #include <string>
 #include "packet.hh"
+
+#define GUID_STR_LEN (sizeof(uuid_t) * 2) + 4 + 1
 
 //////////////////////////////////////////////////
 transport::Header::Header()
@@ -28,7 +31,7 @@ transport::Header::Header()
 
 //////////////////////////////////////////////////
 transport::Header::Header(const uint16_t _version,
-                          const boost::uuids::uuid &_guid,
+                          const uuid_t &_guid,
                           const std::string &_topic,
                           const uint8_t _type,
                           const uint16_t _flags)
@@ -48,9 +51,24 @@ uint16_t transport::Header::GetVersion() const
 }
 
 //////////////////////////////////////////////////
-boost::uuids::uuid transport::Header::GetGuid() const
+uuid_t transport::Header::GetGuid() const
 {
   return this->guid;
+}
+
+//////////////////////////////////////////////////
+std::string transport::Header::GetGuidStr() const
+{
+  std::string guid_str;
+  for (size_t i = 0; i < sizeof(uuid_t) && i != GUID_STR_LEN; ++i)
+    {
+      snprintf(guid_str, GUID_STR_LEN,
+        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+        this->guid[0], this->guid[1], this->guid[2], this->guid[3],
+        this->guid[4], this->guid[5], this->guid[6], this->guid[7],
+        this->guid[8], this->guid[9], this->guid[10], this->guid[11],
+        this->guid[12], this->guid[13], this->guid[14], this->guid[15]);
+    }
 }
 
 //////////////////////////////////////////////////
@@ -84,7 +102,7 @@ void transport::Header::SetVersion(const uint16_t _version)
 }
 
 //////////////////////////////////////////////////
-void transport::Header::SetGuid(const boost::uuids::uuid &_guid)
+void transport::Header::SetGuid(const uuid_t &_guid)
 {
   this->guid = _guid;
 }

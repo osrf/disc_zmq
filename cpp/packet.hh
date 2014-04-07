@@ -18,8 +18,9 @@
 #ifndef __PACKET_HH_INCLUDED__
 #define __PACKET_HH_INCLUDED__
 
-#include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/uuid_io.hpp>
+//#include <boost/uuid/uuid_generators.hpp>
+//#include <boost/uuid/uuid_io.hpp>
+#include <uuid/uuid.h>
 #include <string>
 
 //  This is the version of Gazebo transport we implement
@@ -55,7 +56,8 @@ namespace transport
     /// \param[in] _type Message type (ADVERTISE, SUBSCRIPTION, ...)
     /// \param[in] _flags Optional flags that you want to include in the header.
     public: Header(const uint16_t _version,
-                   const boost::uuids::uuid &_guid,
+                   //const boost::uuids::uuid &_guid,
+                   const uuid_t &_guid,
                    const std::string &_topic,
                    const uint8_t _type,
                    const uint16_t _flags);
@@ -66,7 +68,11 @@ namespace transport
 
     /// \brief Get the guid.
     /// \return A unique global identifier for every process.
-    public: boost::uuids::uuid GetGuid() const;
+    public: uuid_t GetGuid() const;
+
+    /// \brief Get the string representation of the GUID.
+    /// \return A string representation of the GUID.
+    public: std::string GetGuidStr() const;
 
     /// \brief Get the topic length.
     /// \return Topic length in bytes.
@@ -90,7 +96,7 @@ namespace transport
 
     /// \brief Set the guid.
     /// \param[in] _guid A unique global identifier for every process.
-    public: void SetGuid(const boost::uuids::uuid &_guid);
+    public: void SetGuid(const uuid_t &_guid);
 
     /// \brief Set the topic.
     /// \param[in] _topic Topic name.
@@ -130,7 +136,8 @@ namespace transport
     private: uint16_t version;
 
     /// \brief Global identifier. Every process has a unique guid.
-    private: boost::uuids::uuid guid;
+    // private: boost::uuids::uuid guid;
+    private: uuid_t guid;
 
     /// \brief Topic length in bytes.
     private: uint16_t topicLength;

@@ -16,7 +16,7 @@
 */
 
 #include <limits.h>
-#include <boost/lexical_cast.hpp>
+// #include <boost/lexical_cast.hpp>
 
 #include "packet.hh"
 #include "gtest/gtest.h"
@@ -24,15 +24,16 @@
 //////////////////////////////////////////////////
 TEST(PacketTest, BasicHeaderAPI)
 {
-  boost::uuids::uuid guid = boost::uuids::random_generator()();
-  std::string guidStr = boost::lexical_cast<std::string>(guid);
-  std::string topic = "topic_test";
-
+  uuid_t guid;
+  uuid_generate(guid);
   transport::Header header(TRNSP_VERSION, guid, topic, ADV, 0);
+
+  std::string guidStr = header.GetGuidStr();
+  std::string topic = "topic_test";
 
   // Check Header getters
   EXPECT_EQ(header.GetVersion(), TRNSP_VERSION);
-  std::string otherGuidStr = boost::lexical_cast<std::string>(header.GetGuid());
+  std::string otherGuidStr = header.GetGuidStr();
   EXPECT_EQ(guidStr, otherGuidStr);
   EXPECT_EQ(header.GetTopicLength(), topic.size());
   EXPECT_EQ(header.GetTopic(), topic);
@@ -46,11 +47,10 @@ TEST(PacketTest, BasicHeaderAPI)
   // Check Header setters
   header.SetVersion(TRNSP_VERSION + 1);
   EXPECT_EQ(header.GetVersion(), TRNSP_VERSION + 1);
-  guid = boost::uuids::random_generator()();
-  guidStr = boost::lexical_cast<std::string>(guid);
+  uuid_generate(guid);
   header.SetGuid(guid);
-  otherGuidStr = boost::lexical_cast<std::string>(header.GetGuid());
-  EXPECT_EQ(guidStr, otherGuidStr);
+  otherGuidStr = header.GetGuidStr();
+  EXPECT_NE(guidStr, otherGuidStr);
   topic = "a_new_topic_test";
   header.SetTopic(topic);
   EXPECT_EQ(header.GetTopic(), topic);
@@ -70,9 +70,10 @@ TEST(PacketTest, HeaderIO)
 {
   std::string guidStr;
   std::string otherGuidStr;
-
-  boost::uuids::uuid guid = boost::uuids::random_generator()();
   std::string topic = "topic_test";
+
+  uuid_t guid;
+  uuid_generate(guid);
 
   // Pack a Header
   transport::Header header(TRNSP_VERSION, guid, topic, ADV_SVC, 2);
@@ -87,8 +88,8 @@ TEST(PacketTest, HeaderIO)
 
   // Check that after Pack() and Unpack() the Header remains the same
   EXPECT_EQ(header.GetVersion(), otherHeader.GetVersion());
-  guidStr = boost::lexical_cast<std::string>(header.GetGuid());
-  otherGuidStr = boost::lexical_cast<std::string>(otherHeader.GetGuid());
+  guidStr = header.GetGuidStr();
+  otherGuidStr = otherHeader.GetGuidStr();
   EXPECT_EQ(guidStr, otherGuidStr);
   EXPECT_EQ(header.GetTopicLength(), otherHeader.GetTopicLength());
   EXPECT_EQ(header.GetTopic(), otherHeader.GetTopic());
@@ -100,18 +101,20 @@ TEST(PacketTest, HeaderIO)
 //////////////////////////////////////////////////
 TEST(PacketTest, BasicAdvMsgAPI)
 {
-  boost::uuids::uuid guid = boost::uuids::random_generator()();
-  std::string otherGuidStr = boost::lexical_cast<std::string>(guid);
+  uuid_t guid;
+  uuid_generate(guid);
+  transport::Header otherHeader(TRNSP_VERSION, guid, topic, ADV, 3);
+
+  std::string otherGuidStr = header.GetGuidStr();
   std::string topic = "topic_test";
 
-  transport::Header otherHeader(TRNSP_VERSION, guid, topic, ADV, 3);
   std::string address = "tcp://10.0.0.1:6000";
   transport::AdvMsg advMsg(otherHeader, address);
 
   // Check AdvMsg getters
   transport::Header header = advMsg.GetHeader();
   EXPECT_EQ(header.GetVersion(), otherHeader.GetVersion());
-  std::string guidStr = boost::lexical_cast<std::string>(header.GetGuid());
+  std::string guidStr = header.GetGuidStr();
   EXPECT_EQ(guidStr, otherGuidStr);
   EXPECT_EQ(header.GetTopicLength(), otherHeader.GetTopicLength());
   EXPECT_EQ(header.GetTopic(), otherHeader.GetTopic());
@@ -125,16 +128,16 @@ TEST(PacketTest, BasicAdvMsgAPI)
     sizeof(advMsg.GetAddressLength()) + advMsg.GetAddress().size();
   EXPECT_EQ(advMsg.GetMsgLength(), msgLength);
 
-  guid = boost::uuids::random_generator()();
-  guidStr = boost::lexical_cast<std::string>(guid);
+  uuid_generate(guid);
   topic = "a_new_topic_test";
 
   // Check AdvMsg setters
   transport::Header anotherHeader(TRNSP_VERSION + 1, guid, topic, ADV_SVC, 3);
+  guidStr = anotherHeader.GetGuidStr();
   advMsg.SetHeader(anotherHeader);
   header = advMsg.GetHeader();
   EXPECT_EQ(header.GetVersion(), TRNSP_VERSION + 1);
-  otherGuidStr = boost::lexical_cast<std::string>(header.GetGuid());
+  otherGuidStr = header.GetGuidStr();
   EXPECT_EQ(guidStr, otherGuidStr);
   EXPECT_EQ(header.GetTopicLength(), topic.size());
   EXPECT_EQ(header.GetTopic(), topic);
@@ -153,7 +156,8 @@ TEST(PacketTest, BasicAdvMsgAPI)
 //////////////////////////////////////////////////
 TEST(PacketTest, AdvMsgIO)
 {
-  boost::uuids::uuid guid = boost::uuids::random_generator()();
+  uuid_t guid;
+  uuid_generate(guid);
   std::string topic = "topic_test";
 
   // Pack an AdvMsg
