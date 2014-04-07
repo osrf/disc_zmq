@@ -230,7 +230,7 @@ int transport::Node::UnSubscribe(const std::string &_topic)
     std::cout << "\nUnubscribe (" << _topic << ")\n";
 
   this->topics.SetSubscribed(_topic, false);
-  this->topics.SetCallback(_topic, NULL);
+  this->topics.SetCallback(_topic, nullptr);
 
   // Remove the filter for this topic
   this->subscriber->setsockopt(ZMQ_UNSUBSCRIBE, _topic.data(),
@@ -263,7 +263,7 @@ int transport::Node::SrvUnAdvertise(const std::string &_topic)
   assert(_topic != "");
 
   this->topicsSrvs.SetAdvertisedByMe(_topic, false);
-  this->topicsSrvs.SetRepCallback(_topic, NULL);
+  this->topicsSrvs.SetRepCallback(_topic, nullptr);
 
   if (this->verbose)
     std::cout << "\nUnadvertise srv call(" << _topic << ")\n";
@@ -504,8 +504,8 @@ void transport::Node::RecvSrvReply()
 void transport::Node::SendPendingAsyncSrvCalls()
 {
   // Check if there are any pending requests ready to send
-  for (auto it = this->topicsSrvs.GetTopics().begin();
-       it != this->topicsSrvs.GetTopics().end(); ++it)
+  for (auto it = this->topicsSrvs.GetTopicsInfo().begin();
+       it != this->topicsSrvs.GetTopicsInfo().end(); ++it)
   {
     std::string topic = it->first;
 

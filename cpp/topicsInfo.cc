@@ -23,13 +23,13 @@
 //////////////////////////////////////////////////
 transport::TopicInfo::TopicInfo()
 {
-  this->connected = false;
-  this->subscribed = false;
+  this->connected      = false;
+  this->subscribed     = false;
   this->advertisedByMe = false;
-  this->requested = false;
-  this->cb = NULL;
-  this->reqCb = NULL;
-  this->repCb = NULL;
+  this->requested      = false;
+  this->cb             = nullptr;
+  this->reqCb          = nullptr;
+  this->repCb          = nullptr;
 }
 
 //////////////////////////////////////////////////
@@ -47,8 +47,8 @@ transport::TopicsInfo::TopicsInfo()
 //////////////////////////////////////////////////
 transport::TopicsInfo::~TopicsInfo()
 {
-  for (auto it = this->GetTopics().begin(); it != this->GetTopics().end(); ++it)
-    delete it->second;
+  for (auto topicInfo : this->GetTopicsInfo())
+    delete topicInfo.second;
 
   this->topicsInfo.clear();
 };
@@ -62,7 +62,7 @@ bool transport::TopicsInfo::HasTopic(const std::string &_topic)
 
 //////////////////////////////////////////////////
 bool transport::TopicsInfo::GetAdvAddresses(const std::string &_topic,
-                                           std::vector<std::string> &_addresses)
+                                            TopicInfo::Topics_L &_addresses)
 {
   if (!this->HasTopic(_topic))
     return false;
@@ -127,7 +127,7 @@ bool transport::TopicsInfo::GetCallback(const std::string &_topic,
     return false;
 
   _cb = this->topicsInfo[_topic]->cb;
-  return _cb != NULL;
+  return _cb != nullptr;
 }
 
 //////////////////////////////////////////////////
@@ -138,7 +138,7 @@ bool transport::TopicsInfo::GetReqCallback(const std::string &_topic,
     return false;
 
   _cb = this->topicsInfo[_topic]->reqCb;
-  return _cb != NULL;
+  return _cb != nullptr;
 }
 
 //////////////////////////////////////////////////
@@ -149,7 +149,7 @@ bool transport::TopicsInfo::GetRepCallback(const std::string &_topic,
     return false;
 
   _cb = this->topicsInfo[_topic]->repCb;
-  return _cb != NULL;
+  return _cb != nullptr;
 }
 
 //////////////////////////////////////////////////
@@ -315,7 +315,7 @@ bool transport::TopicsInfo::DelReq(const std::string &_topic,
 }
 
 //////////////////////////////////////////////////
-transport::TopicInfo::Topics_M& transport::TopicsInfo::GetTopics()
+transport::TopicInfo::Topics_M& transport::TopicsInfo::GetTopicsInfo()
 {
   return this->topicsInfo;
 }

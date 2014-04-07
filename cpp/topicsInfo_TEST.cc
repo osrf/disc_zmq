@@ -21,19 +21,24 @@
 #include "topicsInfo.hh"
 #include "gtest/gtest.h"
 
+bool callbackExecuted = false;
+
 //////////////////////////////////////////////////
 void myCb(const std::string &p1, const std::string &p2)
 {
+  callbackExecuted = true;
 }
 
 //////////////////////////////////////////////////
 void myReqCb(const std::string &p1, int p2, const std::string &p3)
 {
+  callbackExecuted = true;
 }
 
 //////////////////////////////////////////////////
 int myRepCb(const std::string &p1, const std::string &p2, std::string &p3)
 {
+  callbackExecuted = true;
   return 0;
 }
 
@@ -100,17 +105,24 @@ TEST(PacketTest, BasicTopicsInfoAPI)
   // Check SetCallback
   topics.SetCallback(topic, myCb);
   EXPECT_TRUE(topics.GetCallback(topic, cb));
-  EXPECT_EQ(&myCb, cb);
+  callbackExecuted = false;
+  cb("topic", "data");
+  EXPECT_TRUE(callbackExecuted);
 
   // Check SetReqCallback
   topics.SetReqCallback(topic, myReqCb);
   EXPECT_TRUE(topics.GetReqCallback(topic, reqCb));
-  EXPECT_EQ(&myReqCb, reqCb);
+  callbackExecuted = false;
+  reqCb("topic", 0, "answer");
+  EXPECT_TRUE(callbackExecuted);
 
   // Check SetRepCallback
   topics.SetRepCallback(topic, myRepCb);
   EXPECT_TRUE(topics.GetRepCallback(topic, repCb));
-  EXPECT_EQ(&myRepCb, repCb);
+  callbackExecuted = false;
+  std::string result;
+  EXPECT_EQ(repCb("topic", "ReqParams", result), 0);
+  EXPECT_TRUE(callbackExecuted);
 
   // Check the address removal
   topics.RemoveAdvAddress(topic, address);
@@ -118,24 +130,26 @@ TEST(PacketTest, BasicTopicsInfoAPI)
   EXPECT_FALSE(topics.GetAdvAddresses(topic, v));
 
   // Check the addition of asynchronous service call requests
-  std::string param1 = "param1";
-  std::string param2 = "param2";
-  EXPECT_FALSE(topics.DelReq(topic, param1));
-  for (auto it = topics.GetTopics().begin();
-       it != topics.GetTopics().end(); ++it)
-    EXPECT_FALSE(topics.PendingReqs(it->first));
-  topics.AddReq(topic, param1);
-  for (auto it = topics.GetTopics().begin();
-       it != topics.GetTopics().end(); ++it)
-    EXPECT_TRUE(topics.PendingReqs(it->first));
-  topics.AddReq(topic, param2);
-  for (auto it = topics.GetTopics().begin();
-       it != topics.GetTopics().end(); ++it)
-    EXPECT_TRUE(topics.PendingReqs(it->first));
+  std::string req1 = "paramsReq1";
+  std::string req2 = "paramsReq2";
+  EXPECT_FALSE(topics.DelReq(topic, req1));
+  for (auto topicInfo : topics.GetTopicsInfo())
+    EXPECT_FALSE(topics.PendingReqs(topicInfo.first));
 
-  EXPECT_TRUE(topics.DelReq(topic, param2));
-  EXPECT_TRUE(topics.DelReq(topic, param1));
-  EXPECT_FALSE(topics.DelReq(topic, param1));
+  topics.AddReq(topic, req1);
+  EXPECT_TRUE(topics.PendingReqs(topic));
+
+  topics.AddReq(topic, req2);
+  EXPECT_TRUE(topics.PendingReqs(topic));
+
+  EXPECT_TRUE(topics.DelReq(topic, req2));
+  EXPECT_TRUE(topics.PendingReqs(topic));
+
+  EXPECT_TRUE(topics.DelReq(topic, req1));
+  EXPECT_FALSE(topics.PendingReqs(topic));
+
+  EXPECT_FALSE(topics.DelReq(topic, req1));
+  EXPECT_FALSE(topics.PendingReqs(topic));
 }
 
 //////////////////////////////////////////////////

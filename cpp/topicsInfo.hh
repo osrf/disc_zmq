@@ -18,7 +18,7 @@
 #ifndef __TOPICS_INFO_HH_INCLUDED__
 #define __TOPICS_INFO_HH_INCLUDED__
 
-#include <boost/function.hpp>
+#include <functional>
 #include <list>
 #include <map>
 #include <string>
@@ -33,16 +33,16 @@ namespace transport
     public: typedef std::vector<std::string> Topics_L;
 
     /// \brief Callback used for receiving topic updates.
-    public: typedef boost::function<void (const std::string &,
-                                          const std::string &)> Callback;
+    public: typedef std::function<void (const std::string &,
+                                        const std::string &)> Callback;
     /// \brief Callback used for receiving a service call request.
-    public: typedef boost::function<void (const std::string &, int,
-                                          const std::string &)> ReqCallback;
+    public: typedef std::function<void (const std::string &, int,
+                                        const std::string &)> ReqCallback;
 
     /// \brief Callback used for receving a service call response.
-    public: typedef boost::function<int (const std::string &,
-                                         const std::string &,
-                                         std::string &)> RepCallback;
+    public: typedef std::function<int (const std::string &,
+                                       const std::string &,
+                                       std::string &)> RepCallback;
 
     /// \brief Map used for store all the knowledge about a given topic.
     public: typedef std::map<std::string, TopicInfo*> Topics_M;
@@ -220,7 +220,7 @@ namespace transport
 
     /// \brief Get a reference to the topics map.
     /// \return Reference to the topic map.
-    public: TopicInfo::Topics_M& GetTopics();
+    public: TopicInfo::Topics_M& GetTopicsInfo();
 
     // Hash with the topic/topicInfo information for pub/sub.
     private: TopicInfo::Topics_M topicsInfo;
