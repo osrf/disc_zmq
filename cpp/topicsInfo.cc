@@ -17,7 +17,6 @@
 
 #include <algorithm>
 #include <string>
-#include <vector>
 #include "topicsInfo.hh"
 
 //////////////////////////////////////////////////

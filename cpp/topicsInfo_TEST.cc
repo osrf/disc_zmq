@@ -15,9 +15,7 @@
  *
 */
 
-#include <limits.h>
 #include <string>
-#include <vector>
 #include "topicsInfo.hh"
 #include "gtest/gtest.h"
 
@@ -48,7 +46,7 @@ TEST(PacketTest, BasicTopicsInfoAPI)
   transport::TopicsInfo topics;
   std::string topic = "test_topic";
   std::string address = "tcp://10.0.0.1:6000";
-  std::vector<std::string> v;
+  transport::TopicInfo::Topics_L v;
   transport::TopicInfo::Callback cb;
   transport::TopicInfo::ReqCallback reqCb;
   transport::TopicInfo::RepCallback repCb;
