@@ -18,11 +18,9 @@
 #ifndef __NODE_HH_INCLUDED__
 #define __NODE_HH_INCLUDED__
 
-#include <boost/uuid/uuid_generators.hpp>
-#include <boost/uuid/uuid_io.hpp>
 #include <google/protobuf/message.h>
+#include <uuid/uuid.h>
 #include <string>
-
 #include "packet.hh"
 #include "sockets/socket.hh"
 #include "topicsInfo.hh"
@@ -212,7 +210,7 @@ namespace transport
     private: int timeout;
 
     /// \brief Local GUID.
-    private: boost::uuids::uuid guid;
+    private: uuid_t guid;
 
     /// \brief String conversion of the GUID.
     private: std::string guidStr;

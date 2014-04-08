@@ -15,13 +15,27 @@
  *
 */
 
-//#include <boost/uuid/uuid_generators.hpp>
-//#include <boost/uuid/uuid_io.hpp>
+#include <string.h>
 #include <uuid/uuid.h>
+#include <iostream>
 #include <string>
 #include "packet.hh"
 
-#define GUID_STR_LEN (sizeof(uuid_t) * 2) + 4 + 1
+//////////////////////////////////////////////////
+std::string transport::GetGuidStr(const uuid_t &_uuid)
+{
+  char *guid_str = new char[GUID_STR_LEN];
+  for (size_t i = 0; i < sizeof(uuid_t) && i != GUID_STR_LEN; ++i)
+  {
+    snprintf(guid_str, GUID_STR_LEN,
+      "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+      _uuid[0], _uuid[1], _uuid[2], _uuid[3],
+      _uuid[4], _uuid[5], _uuid[6], _uuid[7],
+      _uuid[8], _uuid[9], _uuid[10], _uuid[11],
+      _uuid[12], _uuid[13], _uuid[14], _uuid[15]);
+  }
+  return std::string(guid_str);
+}
 
 //////////////////////////////////////////////////
 transport::Header::Header()
@@ -51,24 +65,9 @@ uint16_t transport::Header::GetVersion() const
 }
 
 //////////////////////////////////////////////////
-uuid_t transport::Header::GetGuid() const
+uuid_t& transport::Header::GetGuid()
 {
   return this->guid;
-}
-
-//////////////////////////////////////////////////
-std::string transport::Header::GetGuidStr() const
-{
-  std::string guid_str;
-  for (size_t i = 0; i < sizeof(uuid_t) && i != GUID_STR_LEN; ++i)
-    {
-      snprintf(guid_str, GUID_STR_LEN,
-        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-        this->guid[0], this->guid[1], this->guid[2], this->guid[3],
-        this->guid[4], this->guid[5], this->guid[6], this->guid[7],
-        this->guid[8], this->guid[9], this->guid[10], this->guid[11],
-        this->guid[12], this->guid[13], this->guid[14], this->guid[15]);
-    }
 }
 
 //////////////////////////////////////////////////
@@ -104,7 +103,7 @@ void transport::Header::SetVersion(const uint16_t _version)
 //////////////////////////////////////////////////
 void transport::Header::SetGuid(const uuid_t &_guid)
 {
-  this->guid = _guid;
+  uuid_copy(this->guid, _guid);
 }
 
 //////////////////////////////////////////////////
@@ -154,8 +153,8 @@ size_t transport::Header::Pack(char *_buffer)
 
   memcpy(_buffer, &this->version, sizeof(this->version));
   _buffer += sizeof(this->version);
-  memcpy(_buffer, &this->guid, this->guid.size());
-  _buffer += this->guid.size();
+  memcpy(_buffer, &this->guid, sizeof(this->guid));
+  _buffer += sizeof(this->guid);
   memcpy(_buffer, &this->topicLength, sizeof(this->topicLength));
   _buffer += sizeof(this->topicLength);
   memcpy(_buffer, this->topic.data(), this->topicLength);
@@ -175,8 +174,8 @@ size_t transport::Header::Unpack(const char *_buffer)
   _buffer += sizeof(this->version);
 
   // Read the GUID
-  memcpy(&this->guid, _buffer, this->guid.size());
-  _buffer += this->guid.size();
+  memcpy(&this->guid, _buffer, sizeof(this->guid));
+  _buffer += sizeof(this->guid);
 
   // Read the topic length
   memcpy(&this->topicLength, _buffer, sizeof(this->topicLength));
@@ -205,7 +204,7 @@ size_t transport::Header::Unpack(const char *_buffer)
 //////////////////////////////////////////////////
 void transport::Header::UpdateHeaderLength()
 {
-  this->headerLength = sizeof(this->version) + this->guid.size() +
+  this->headerLength = sizeof(this->version) + sizeof(this->guid) +
                        sizeof(this->topicLength) + this->topic.size() +
                        sizeof(this->type) + sizeof(this->flags);
 }

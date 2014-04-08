@@ -44,7 +44,7 @@ int transport::hostname_to_ip(char * hostname , char* ip)
   struct in_addr **addr_list;
   int i;
 
-  if ( (he = gethostbyname( hostname ) ) == NULL)
+  if ( (he = gethostbyname( hostname ) ) == nullptr)
   {
     // get the host info
     herror("gethostbyname");
@@ -53,7 +53,7 @@ int transport::hostname_to_ip(char * hostname , char* ip)
 
   addr_list = (struct in_addr **) he->h_addr_list;
 
-  for (i = 0; addr_list[i] != NULL; ++i)
+  for (i = 0; addr_list[i] != nullptr; ++i)
   {
     // Return the first one;
     strcpy(ip, inet_ntoa(*addr_list[i]) );
@@ -96,7 +96,7 @@ std::string transport::DetermineHost()
 
   // Third, fall back on interface search, which will yield an IP address
 #ifdef HAVE_IFADDRS_H
-  struct ifaddrs *ifa = NULL, *ifp = NULL;
+  struct ifaddrs *ifa = nullptr, *ifp = NULL;
   int rc;
   if ((rc = getifaddrs(&ifp)) < 0)
   {
@@ -116,7 +116,7 @@ std::string transport::DetermineHost()
       salen = sizeof(struct sockaddr_in6);
     else
       continue;
-    if (getnameinfo(ifa->ifa_addr, salen, ip_, sizeof(ip_), NULL, 0,
+    if (getnameinfo(ifa->ifa_addr, salen, ip_, sizeof(ip_), nullptr, 0,
                     NI_NUMERICHOST) < 0)
     {
       std::cout << "getnameinfo couldn't get the ip of interface " <<

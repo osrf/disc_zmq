@@ -15,14 +15,11 @@
  *
 */
 
-//#include <boost/lexical_cast.hpp>
-//#include <boost/uuid/uuid_generators.hpp>
-//#include <boost/uuid/uuid_io.hpp>
 #include <google/protobuf/message.h>
+#include <uuid/uuid.h>
 #include <iostream>
 #include <string>
 #include <vector>
-
 #include "discZmq.hh"
 #include "netUtils.hh"
 #include "packet.hh"
@@ -37,7 +34,7 @@ transport::Node::Node(std::string _master, bool _verbose)
   char bindEndPoint[1024];
 
   // Initialize random seed
-  srand(time(NULL));
+  srand(time(nullptr));
 
   // Required 0MQ minimum version
   s_version_assert(2, 1);
@@ -53,10 +50,10 @@ transport::Node::Node(std::string _master, bool _verbose)
   this->hostAddr = DetermineHost();
 
   // Create the GUID
-  uuid_t guid;
-  uuid_generate(guid);
+  uuid_generate(this->guid);
   // this->guid = boost::uuids::random_generator()();
-  this->guidStr = boost::lexical_cast<std::string>(this->guid);
+  // this->guidStr = boost::lexical_cast<std::string>(this->guid);
+  this->guidStr = transport::GetGuidStr(this->guid);
 
   // 0MQ
   try
@@ -552,7 +549,7 @@ int transport::Node::DispatchDiscoveryMsg(char *_msg)
   pBody += header.GetHeaderLength();
 
   std::string topic = header.GetTopic();
-  std::string rcvdGuid = boost::lexical_cast<std::string>(header.GetGuid());
+  std::string rcvdGuid = transport::GetGuidStr(header.GetGuid());
 
   if (this->verbose)
     header.Print();

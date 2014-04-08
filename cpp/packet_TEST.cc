@@ -16,24 +16,24 @@
 */
 
 #include <limits.h>
-// #include <boost/lexical_cast.hpp>
-
+#include <uuid/uuid.h>
+#include <string>
 #include "packet.hh"
 #include "gtest/gtest.h"
 
 //////////////////////////////////////////////////
 TEST(PacketTest, BasicHeaderAPI)
 {
+  std::string topic = "topic_test";
   uuid_t guid;
   uuid_generate(guid);
   transport::Header header(TRNSP_VERSION, guid, topic, ADV, 0);
 
-  std::string guidStr = header.GetGuidStr();
-  std::string topic = "topic_test";
+  std::string guidStr = transport::GetGuidStr(guid);
 
   // Check Header getters
   EXPECT_EQ(header.GetVersion(), TRNSP_VERSION);
-  std::string otherGuidStr = header.GetGuidStr();
+  std::string otherGuidStr = transport::GetGuidStr(header.GetGuid());
   EXPECT_EQ(guidStr, otherGuidStr);
   EXPECT_EQ(header.GetTopicLength(), topic.size());
   EXPECT_EQ(header.GetTopic(), topic);
@@ -49,7 +49,7 @@ TEST(PacketTest, BasicHeaderAPI)
   EXPECT_EQ(header.GetVersion(), TRNSP_VERSION + 1);
   uuid_generate(guid);
   header.SetGuid(guid);
-  otherGuidStr = header.GetGuidStr();
+  otherGuidStr = transport::GetGuidStr(header.GetGuid());
   EXPECT_NE(guidStr, otherGuidStr);
   topic = "a_new_topic_test";
   header.SetTopic(topic);
@@ -88,8 +88,8 @@ TEST(PacketTest, HeaderIO)
 
   // Check that after Pack() and Unpack() the Header remains the same
   EXPECT_EQ(header.GetVersion(), otherHeader.GetVersion());
-  guidStr = header.GetGuidStr();
-  otherGuidStr = otherHeader.GetGuidStr();
+  guidStr = transport::GetGuidStr(guid);
+  otherGuidStr = transport::GetGuidStr(otherHeader.GetGuid());
   EXPECT_EQ(guidStr, otherGuidStr);
   EXPECT_EQ(header.GetTopicLength(), otherHeader.GetTopicLength());
   EXPECT_EQ(header.GetTopic(), otherHeader.GetTopic());
@@ -101,12 +101,12 @@ TEST(PacketTest, HeaderIO)
 //////////////////////////////////////////////////
 TEST(PacketTest, BasicAdvMsgAPI)
 {
+  std::string topic = "topic_test";
   uuid_t guid;
   uuid_generate(guid);
   transport::Header otherHeader(TRNSP_VERSION, guid, topic, ADV, 3);
 
-  std::string otherGuidStr = header.GetGuidStr();
-  std::string topic = "topic_test";
+  std::string otherGuidStr = transport::GetGuidStr(guid);
 
   std::string address = "tcp://10.0.0.1:6000";
   transport::AdvMsg advMsg(otherHeader, address);
@@ -114,7 +114,7 @@ TEST(PacketTest, BasicAdvMsgAPI)
   // Check AdvMsg getters
   transport::Header header = advMsg.GetHeader();
   EXPECT_EQ(header.GetVersion(), otherHeader.GetVersion());
-  std::string guidStr = header.GetGuidStr();
+  std::string guidStr = transport::GetGuidStr(header.GetGuid());
   EXPECT_EQ(guidStr, otherGuidStr);
   EXPECT_EQ(header.GetTopicLength(), otherHeader.GetTopicLength());
   EXPECT_EQ(header.GetTopic(), otherHeader.GetTopic());
@@ -133,11 +133,11 @@ TEST(PacketTest, BasicAdvMsgAPI)
 
   // Check AdvMsg setters
   transport::Header anotherHeader(TRNSP_VERSION + 1, guid, topic, ADV_SVC, 3);
-  guidStr = anotherHeader.GetGuidStr();
+  guidStr = transport::GetGuidStr(guid);
   advMsg.SetHeader(anotherHeader);
   header = advMsg.GetHeader();
   EXPECT_EQ(header.GetVersion(), TRNSP_VERSION + 1);
-  otherGuidStr = header.GetGuidStr();
+  otherGuidStr = transport::GetGuidStr(anotherHeader.GetGuid());
   EXPECT_EQ(guidStr, otherGuidStr);
   EXPECT_EQ(header.GetTopicLength(), topic.size());
   EXPECT_EQ(header.GetTopic(), topic);

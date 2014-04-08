@@ -18,8 +18,6 @@
 #ifndef __PACKET_HH_INCLUDED__
 #define __PACKET_HH_INCLUDED__
 
-//#include <boost/uuid/uuid_generators.hpp>
-//#include <boost/uuid/uuid_io.hpp>
 #include <uuid/uuid.h>
 #include <string>
 
@@ -36,6 +34,8 @@
 #define REP_OK              7
 #define REP_ERROR           8
 
+#define GUID_STR_LEN (sizeof(uuid_t) * 2) + 4 + 1
+
 static char *msgTypesStr[] = {
     NULL, (char*)"ADVERTISE", (char*)"SUBSCRIBE", (char*)"ADV_SRV",
     (char*)"SUB_SVC", (char*)"PUB", (char*)"REQ", (char*)"SRV_REP_OK",
@@ -44,6 +44,11 @@ static char *msgTypesStr[] = {
 
 namespace transport
 {
+  /// \brief Get the string representation of the GUID.
+  /// \param[in] _uuid UUID to be converted to string.
+  /// \return A string representation of the GUID.
+  std::string GetGuidStr(const uuid_t &_uuid);
+
   class Header
   {
     /// \brief Constructor.
@@ -56,7 +61,6 @@ namespace transport
     /// \param[in] _type Message type (ADVERTISE, SUBSCRIPTION, ...)
     /// \param[in] _flags Optional flags that you want to include in the header.
     public: Header(const uint16_t _version,
-                   //const boost::uuids::uuid &_guid,
                    const uuid_t &_guid,
                    const std::string &_topic,
                    const uint8_t _type,
@@ -68,11 +72,7 @@ namespace transport
 
     /// \brief Get the guid.
     /// \return A unique global identifier for every process.
-    public: uuid_t GetGuid() const;
-
-    /// \brief Get the string representation of the GUID.
-    /// \return A string representation of the GUID.
-    public: std::string GetGuidStr() const;
+    public: uuid_t& GetGuid();
 
     /// \brief Get the topic length.
     /// \return Topic length in bytes.
@@ -136,7 +136,6 @@ namespace transport
     private: uint16_t version;
 
     /// \brief Global identifier. Every process has a unique guid.
-    // private: boost::uuids::uuid guid;
     private: uuid_t guid;
 
     /// \brief Topic length in bytes.

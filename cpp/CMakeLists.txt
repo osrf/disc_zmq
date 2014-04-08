@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
 INCLUDE (CheckIncludeFiles)
-include(FindBoost)
 
 project (disc_zmq)
 
@@ -61,6 +60,7 @@ add_library(disczmq SHARED discZmq.cc sockets/socket.cc netUtils.cc packet.cc to
 target_link_libraries(disczmq
   protobuf
   zmq
+  uuid
 )
 
 # Unit tests
@@ -71,7 +71,7 @@ add_executable(UNIT_packet_TEST packet_TEST.cc)
 add_executable(UNIT_topicsInfo_TEST topicsInfo_TEST.cc)
 add_executable(UNIT_discZmq_TEST discZmq_TEST.cc)
 
-target_link_libraries(UNIT_packet_TEST disczmq ${Boost_LIBRARIES} gtest gtest_main)
+target_link_libraries(UNIT_packet_TEST disczmq gtest gtest_main)
 target_link_libraries(UNIT_topicsInfo_TEST disczmq gtest gtest_main)
 target_link_libraries(UNIT_discZmq_TEST disczmq gtest gtest_main)
 
