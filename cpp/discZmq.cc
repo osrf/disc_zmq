@@ -51,8 +51,6 @@ transport::Node::Node(std::string _master, bool _verbose)
 
   // Create the GUID
   uuid_generate(this->guid);
-  // this->guid = boost::uuids::random_generator()();
-  // this->guidStr = boost::lexical_cast<std::string>(this->guid);
   this->guidStr = transport::GetGuidStr(this->guid);
 
   // 0MQ
